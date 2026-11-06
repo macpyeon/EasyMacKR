@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ko</string>
+	<key>CFBundleExecutable</key>
+	<string>MacPyeon</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>kr.macpyeon.MacPyeon</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>MacPyeon</string>
+	<key>CFBundleDisplayName</key>
+	<string>맥편해</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>맥편해</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Finder의 현재 폴더에 새 문서·이미지를 만들고, 휴지통 비우기와 다크 모드 전환을 위해 Finder와 System Events를 제어합니다.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>데스크탑에 생긴 한글 파일 이름이 윈도우에서 깨지지 않도록(자소 분리 방지) 이름을 정리합니다.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>다운로드한 한글 파일 이름이 윈도우에서 깨지지 않도록(자소 분리 방지) 이름을 정리합니다.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>선택한 파일의 한글 이름을 정리하거나 윈도우용으로 압축합니다.</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>맥편해: 윈도우용으로 압축</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>zipForWindows</string>
+			<key>NSPortName</key>
+			<string>MacPyeon</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>맥편해: 한글 파일명 정리(자소 합치기)</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>normalizeHangulNames</string>
+			<key>NSPortName</key>
+			<string>MacPyeon</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
