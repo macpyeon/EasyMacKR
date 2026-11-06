@@ -59,6 +59,10 @@ final class SystemMonitor: ObservableObject {
 
     private var users = Set<String>()
     private var timer: Timer?
+    /// GPU 사용률은 순간값이라 많이 튄다. 0.25초마다 재서 측정 주기(2초) 평균을 쓴다.
+    private var gpuTimer: Timer?
+    private var gpuSum = 0.0
+    private var gpuCount = 0
     private var lastCPUTicks: (busy: UInt64, total: UInt64)?
     private var lastNet: (inBytes: UInt64, outBytes: UInt64, time: TimeInterval)?
     private var tick = 0
@@ -73,11 +77,18 @@ final class SystemMonitor: ObservableObject {
         if users.isEmpty {
             timer?.invalidate()
             timer = nil
+            gpuTimer?.invalidate()
+            gpuTimer = nil
         } else if timer == nil {
+            sampleGPU()
             sample()
             let t = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.sample() }
             RunLoop.main.add(t, forMode: .common)
             timer = t
+            let g = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.sampleGPU() }
+            g.tolerance = 0.05
+            RunLoop.main.add(g, forMode: .common)
+            gpuTimer = g
         }
     }
 
@@ -86,7 +97,14 @@ final class SystemMonitor: ObservableObject {
     private func sample() {
         tick += 1
         if let c = readCPU() { cpu = c; push(&cpuHistory, c) }
-        gpu = readGPU()
+        // 지난 측정 이후 0.25초마다 모은 GPU 값의 평균
+        if gpuCount > 0 {
+            gpu = gpuSum / Double(gpuCount)
+        } else {
+            gpu = readGPU()
+        }
+        gpuSum = 0
+        gpuCount = 0
         memoryUsed = readMemoryUsed()
         push(&memoryHistory, Double(memoryUsed) / Double(max(memoryTotal, 1)))
         memoryPressure = readMemoryPressure()
@@ -149,6 +167,12 @@ final class SystemMonitor: ObservableObject {
         var size = MemoryLayout<Int32>.size
         sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0)
         return Int(level)
+    }
+
+    private func sampleGPU() {
+        guard let value = readGPU() else { return }
+        gpuSum += value
+        gpuCount += 1
     }
 
     private func readGPU() -> Double? {
