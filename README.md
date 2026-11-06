@@ -23,6 +23,8 @@
 brew install --cask macpyeon/tap/macpyeon
 ```
 
+tap 저장소: [macpyeon/homebrew-tap](https://github.com/macpyeon/homebrew-tap)
+
 업데이트는 `brew upgrade --cask macpyeon`
 
 ### 직접 빌드
