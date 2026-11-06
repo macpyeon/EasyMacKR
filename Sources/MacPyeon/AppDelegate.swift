@@ -240,6 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for (title, minutes) in [("끌 때까지", 0), ("30분", 30), ("1시간", 60), ("2시간", 120), ("4시간", 240), ("8시간", 480)] {
             let i = item(title, #selector(startKeepAwake(_:)))
             i.tag = minutes
+            i.state = k.isOn && k.choice == minutes ? .on : .off
             m.addItem(i)
         }
         return m
@@ -314,7 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let id = sender.representedObject as? AudioDeviceID { AudioDevices.setDefault(id, input: true) }
     }
     @objc private func toggleMic() { QuickTools.toggleMicMute() }
-    @objc private func startKeepAwake(_ sender: NSMenuItem) { KeepAwake.shared.start(minutes: sender.tag == 0 ? nil : sender.tag) }
+    @objc private func startKeepAwake(_ sender: NSMenuItem) { KeepAwake.shared.start(minutes: sender.tag) }
     @objc private func stopKeepAwake() { KeepAwake.shared.stop() }
     @objc private func ocr() { QuickTools.copyTextFromScreen() }
     @objc private func pickColor() { QuickTools.pickColor() }

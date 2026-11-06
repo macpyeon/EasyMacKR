@@ -279,7 +279,7 @@ struct KeepAwakeRow: View {
             }
             Spacer()
             Menu(keep.isOn ? "켜짐" : "꺼짐") {
-                Button("끌 때까지") { keep.start(minutes: nil) }
+                Button("끌 때까지") { keep.start(minutes: 0) }
                 Button("30분") { keep.start(minutes: 30) }
                 Button("1시간") { keep.start(minutes: 60) }
                 Button("2시간") { keep.start(minutes: 120) }

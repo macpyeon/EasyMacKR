@@ -183,16 +183,34 @@ final class KeepAwake: ObservableObject {
     static let shared = KeepAwake()
     @Published private(set) var isOn = false
     @Published private(set) var until: Date?
+    @Published private(set) var startedAt: Date?
+    /// 마지막으로 고른 시간(분). 0이면 끌 때까지. 패널을 다시 열어도 이 값을 보여 준다.
+    @Published private(set) var choice: Int
     private let caffeine = Caffeine()
     private var timer: Timer?
+    private static let choiceKey = "keepAwakeMinutes"
 
-    /// minutes가 nil이면 끌 때까지.
-    func start(minutes: Int?) {
+    private init() {
+        let saved = UserDefaults.standard.object(forKey: Self.choiceKey) as? Int
+        choice = saved ?? 60
+    }
+
+    /// 꺼진 상태에서 시간만 골라 둔다.
+    func choose(_ minutes: Int) {
+        choice = minutes
+        UserDefaults.standard.set(minutes, forKey: Self.choiceKey)
+    }
+
+    /// minutes가 0이면 끌 때까지.
+    func start(minutes: Int) {
+        choose(minutes)
         caffeine.set(true)
         isOn = caffeine.isOn
         timer?.invalidate()
-        until = minutes.map { Date().addingTimeInterval(TimeInterval($0 * 60)) }
-        if let minutes {
+        timer = nil
+        startedAt = Date()
+        until = minutes > 0 ? Date().addingTimeInterval(TimeInterval(minutes * 60)) : nil
+        if minutes > 0 {
             timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(minutes * 60), repeats: false) { [weak self] _ in
                 self?.stop()
             }
@@ -203,6 +221,7 @@ final class KeepAwake: ObservableObject {
         timer?.invalidate()
         timer = nil
         until = nil
+        startedAt = nil
         caffeine.set(false)
         isOn = false
     }

@@ -331,12 +331,18 @@ private struct Stat: View {
 /// 잠자기 방지: 시간을 고르고 '켜기'를 누른다. 켜져 있으면 남은 시간이 줄어드는 막대로 보인다.
 private struct AwakeTab: View {
     @ObservedObject private var keep = KeepAwake.shared
-    @State private var minutes: Int = 60   // 0 = 끌 때까지
     @State private var now = Date()
-    @State private var startedAt = Date()
     private let timer = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
     private let durations: [(String, Int)] = [("30분", 30), ("1시간", 60), ("2시간", 120), ("4시간", 240), ("계속", 0)]
+
+    /// 고른 시간은 KeepAwake가 기억한다. 켜져 있을 때 바꾸면 그 시간으로 바로 다시 적용.
+    private var selection: Binding<Int> {
+        Binding(get: { keep.choice }, set: { value in
+            guard value != keep.choice else { return }
+            if keep.isOn { keep.start(minutes: value) } else { keep.choose(value) }
+        })
+    }
 
     var body: some View {
         Card {
@@ -352,26 +358,26 @@ private struct AwakeTab: View {
                 }
                 Spacer()
             }
-            if keep.isOn, let until = keep.until {
+            if keep.isOn, let until = keep.until, let startedAt = keep.startedAt {
                 ProgressView(value: max(0, until.timeIntervalSince(now)), total: max(until.timeIntervalSince(startedAt), 1))
                     .tint(.orange)
             }
-            Picker("시간", selection: $minutes) {
+            Picker("시간", selection: selection) {
                 ForEach(durations, id: \.1) { Text($0.0).tag($0.1) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             HStack {
-                Button(keep.isOn ? "시간 바꿔서 다시 시작" : "켜기") {
-                    startedAt = Date()
-                    keep.start(minutes: minutes == 0 ? nil : minutes)
-                }
-                .buttonStyle(.borderedProminent)
                 if keep.isOn {
                     Button("끄기") { keep.stop() }
+                        .buttonStyle(.borderedProminent)
+                } else {
+                    Button("켜기") { keep.start(minutes: keep.choice) }
+                        .buttonStyle(.borderedProminent)
                 }
             }
         }
+        .onAppear { now = Date() }
         .onReceive(timer) { now = $0 }
     }
 
