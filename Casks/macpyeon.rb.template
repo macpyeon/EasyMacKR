@@ -15,6 +15,9 @@ cask "macpyeon" do
   # Apple 공증(notarization)을 받지 않은 앱이라, 내려받은 표시(격리 속성)를 지워야 처음 실행이 막히지 않는다.
   postflight_steps do
     run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "/Applications/MacPyeon.app"], must_succeed: false
+    # 배포판은 버전마다 서명이 달라서, 예전 버전의 손쉬운 사용 항목이 남으면 켜 있어도 동작하지 않는다.
+    # 지워 두면 새 버전이 처음 켜질 때 권한을 새로 요청한다.
+    run "/usr/bin/tccutil", args: ["reset", "Accessibility", "kr.macpyeon.MacPyeon"], must_succeed: false
   end
 
   uninstall quit: "kr.macpyeon.MacPyeon"
