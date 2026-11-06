@@ -21,8 +21,11 @@
 
 ```sh
 brew tap han-wo/easymackr https://github.com/Han-wo/EasyMacKR
+brew trust han-wo/easymackr        # Homebrew 7 이상: 외부 tap은 한 번 신뢰 등록이 필요
 brew install --cask macpyeon
 ```
+
+업데이트는 `brew upgrade --cask macpyeon`
 
 ### 직접 빌드
 

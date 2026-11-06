@@ -39,4 +39,4 @@ echo
 echo "다음 단계:"
 echo "  1) GitHub 저장소 $REPO 에 릴리스 v$VERSION 을 만들고 $ZIP 을 올리세요."
 echo "  2) Casks/macpyeon.rb 를 커밋·푸시하세요."
-echo "  3) 설치:  brew tap han-wo/easymackr https://github.com/$REPO && brew install --cask macpyeon"
+echo "  3) 설치:  brew tap han-wo/easymackr https://github.com/$REPO && brew trust han-wo/easymackr && brew install --cask macpyeon"
