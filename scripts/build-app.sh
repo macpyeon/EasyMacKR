@@ -24,6 +24,11 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/MacPyeon"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# VERSION을 안 주면 가장 최근 릴리스 태그(v0.1.1 → 0.1.1)를 쓴다. 직접 빌드한 앱이
+# 자기를 옛 버전으로 알고 "새 버전이 나왔어요"를 잘못 띄우지 않게.
+if [[ -z "${VERSION:-}" ]]; then
+  VERSION=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)
+fi
 if [[ -n "${VERSION:-}" ]]; then
   plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"
   plutil -replace CFBundleVersion -string "$VERSION" "$APP/Contents/Info.plist"

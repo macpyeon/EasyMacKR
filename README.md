@@ -27,6 +27,12 @@ tap 저장소: [macpyeon/homebrew-tap](https://github.com/macpyeon/homebrew-tap)
 
 업데이트는 `brew upgrade --cask macpyeon`
 
+### 업데이트 알림
+
+새 버전이 나오면 메뉴 막대 **편** 아이콘 오른쪽 위에 점이 찍히고, 패널 맨 위에 바뀐 점과 **업데이트** 버튼이 나옵니다. 누르면 터미널에서 위 brew 명령이 실행돼요. 업데이트 뒤 키보드·마우스 기능이 멈추면 손쉬운 사용 목록에서 맥편해를 한 번 껐다 켜 주세요. (배포판은 개인 인증서로 서명하지 않아서, 버전마다 macOS가 새 앱으로 봅니다)
+
+확인은 12시간마다 GitHub의 최신 릴리스 번호만 받아 오며 내 정보는 보내지 않습니다. 설정 › 일반 › 업데이트에서 끌 수 있어요.
+
 ### 직접 빌드
 
 Xcode 또는 Command Line Tools(`xcode-select --install`)가 필요합니다.

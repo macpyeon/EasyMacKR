@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller.onOpenDashboard = { [weak self] in self?.openSettings(page: .dashboard) }
+        Updater.shared.start()   // 지난 실행 흔적을 보므로 controller.start()보다 먼저
         controller.start()
 
         NSApp.servicesProvider = controller.services
@@ -33,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         SettingsOpener.open = { [weak self] page in self?.openSettings(page: page) }
         updateIcon()
         KeepAwake.shared.$isOn.sink { [weak self] _ in
+            DispatchQueue.main.async { self?.updateIcon() }
+        }.store(in: &cancellables)
+        Updater.shared.$available.sink { [weak self] _ in
             DispatchQueue.main.async { self?.updateIcon() }
         }.store(in: &cancellables)
 
@@ -63,14 +67,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateIcon() {
         guard let button = statusItem?.button else { return }
-        button.image = Self.menuBarImage(filled: KeepAwake.shared.isOn, lines: controller.readout.lines)
+        let update = Updater.shared.available
+        button.image = Self.menuBarImage(filled: KeepAwake.shared.isOn, badge: update != nil, lines: controller.readout.lines)
         button.imagePosition = .imageOnly
-        statusItem.button?.toolTip = KeepAwake.shared.isOn ? "맥편해 · 잠자기 방지 켜짐" : "맥편해"
+        var tip = KeepAwake.shared.isOn ? "맥편해 · 잠자기 방지 켜짐" : "맥편해"
+        if let update { tip += " · 새 버전 \(update.version)" }
+        statusItem.button?.toolTip = tip
     }
 
     /// 아이콘 + (켜져 있으면) 두 줄로 쌓은 작은 수치.
-    static func menuBarImage(filled: Bool, lines: [String]) -> NSImage {
-        let icon = menuBarIcon(filled: filled)
+    static func menuBarImage(filled: Bool, badge: Bool = false, lines: [String]) -> NSImage {
+        let icon = menuBarIcon(filled: filled, badge: badge)
         guard !lines.isEmpty else { return icon }
         let font = NSFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .semibold)
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
@@ -96,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// 메뉴 막대 아이콘: 키캡 안의 '편'. 잠자기 방지가 켜지면 키캡을 채운다.
-    static func menuBarIcon(filled: Bool) -> NSImage {
+    static func menuBarIcon(filled: Bool, badge: Bool = false) -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
             let cap = NSBezierPath(roundedRect: rect.insetBy(dx: 1.2, dy: 1.2), xRadius: 4.2, yRadius: 4.2)
             let text = NSAttributedString(string: "편", attributes: [
@@ -117,6 +124,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 cap.lineWidth = 1.3
                 cap.stroke()
                 text.draw(at: origin)
+            }
+            if badge {
+                // 새 버전 알림: 오른쪽 위 모서리에 점. 둘레를 비워 테두리와 떨어져 보이게 한다.
+                let center = NSPoint(x: rect.maxX - 3.4, y: rect.maxY - 3.4)
+                NSGraphicsContext.current?.compositingOperation = .destinationOut
+                NSBezierPath(ovalIn: NSRect(x: center.x - 3.6, y: center.y - 3.6, width: 7.2, height: 7.2)).fill()
+                NSGraphicsContext.current?.compositingOperation = .sourceOver
+                NSColor.black.setFill()
+                NSBezierPath(ovalIn: NSRect(x: center.x - 2.4, y: center.y - 2.4, width: 4.8, height: 4.8)).fill()
             }
             return true
         }
@@ -140,7 +156,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         let store = controller.store
 
-        menu.addItem(disabled("맥편해"))
+        menu.addItem(disabled("맥편해 \(Updater.shared.currentText)"))
+        if let release = Updater.shared.available {
+            menu.addItem(item(Updater.shared.installedWithBrew ? "⬆︎ 새 버전 \(release.version) 업데이트…" : "⬆︎ 새 버전 \(release.version) 받으러 가기…", #selector(installUpdate)))
+        }
         if store.needsAccessibility && !store.accessibilityGranted {
             menu.addItem(item("⚠️ 손쉬운 사용 권한 허용하기…", #selector(openAccessibility)))
         }
@@ -316,6 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     @objc private func toggleMic() { QuickTools.toggleMicMute() }
     @objc private func startKeepAwake(_ sender: NSMenuItem) { KeepAwake.shared.start(minutes: sender.tag) }
+    @objc private func installUpdate() { Updater.shared.install() }
     @objc private func stopKeepAwake() { KeepAwake.shared.stop() }
     @objc private func ocr() { QuickTools.copyTextFromScreen() }
     @objc private func pickColor() { QuickTools.pickColor() }

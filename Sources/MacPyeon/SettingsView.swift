@@ -161,6 +161,8 @@ private struct GeneralPage: View {
             KeepAwakeRow()
         }
 
+        UpdateSection()
+
         Section {
             Picker("압축 파일 이름 방식", selection: $store.zipEncoding) {
                 ForEach(ZipNameEncoding.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -286,5 +288,39 @@ private struct Tag: View {
             .padding(.vertical, 1)
             .foregroundStyle(color)
             .background(color.opacity(0.14), in: Capsule())
+    }
+}
+
+private struct UpdateSection: View {
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some View {
+        Section {
+            LabeledContent("지금 버전", value: updater.currentText)
+            if let release = updater.available {
+                HStack {
+                    Label("새 버전 \(release.version.withSubject) 나왔어요", systemImage: "arrow.down.circle.fill")
+                        .foregroundStyle(Color.accentColor)
+                    Spacer()
+                    Button("바뀐 점") { updater.openReleasePage(release.version) }
+                    Button(updater.installedWithBrew ? "업데이트" : "받으러 가기") { updater.install() }
+                        .buttonStyle(.borderedProminent)
+                }
+            }
+            Toggle("새 버전이 나오면 알려 주기", isOn: $updater.autoCheck)
+            HStack {
+                Button(updater.checking ? "확인하는 중…" : "지금 확인") { updater.check(manual: true) }
+                    .disabled(updater.checking)
+                if let result = updater.lastResult {
+                    Text(result).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("업데이트")
+        } footer: {
+            Text("12시간마다 GitHub에서 최신 릴리스 번호만 확인해요. 내 정보는 보내지 않아요.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }

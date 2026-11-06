@@ -200,6 +200,7 @@ struct QuickPanelView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            UpdateCard()
             tabBar
             Text(tab.title).font(.headline).foregroundStyle(.secondary).padding(.leading, 2)
             Group {
@@ -269,6 +270,61 @@ struct QuickPanelView: View {
         }
         .padding(4)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 11))
+    }
+}
+
+// MARK: - 업데이트 알림
+
+/// 새 버전이 있거나 방금 업데이트됐을 때만 패널 맨 위에 나온다.
+private struct UpdateCard: View {
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some View {
+        if let release = updater.available {
+            Card {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "arrow.down.circle.fill").font(.title2).foregroundStyle(Color.accentColor)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("새 버전 \(release.version.withSubject) 나왔어요").font(.callout.weight(.semibold))
+                        Text("지금 \(updater.currentText)").font(.caption).foregroundStyle(.secondary)
+                        ForEach(release.summaryLines(limit: 3), id: \.self) {
+                            Text("· " + $0).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 8) {
+                    Button(updater.installedWithBrew ? "업데이트" : "받으러 가기") { updater.install() }
+                        .buttonStyle(.borderedProminent)
+                    Button("바뀐 점") { updater.openReleasePage(release.version) }
+                    Spacer()
+                    Button("이번 버전 건너뛰기") { updater.skip() }
+                        .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                }
+                if updater.installedWithBrew {
+                    Text("터미널에서 brew로 업데이트해요. 끝나면 손쉬운 사용 권한을 한 번 다시 켜야 할 수 있어요.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } else if let version = updater.justUpdated {
+            Card {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.seal.fill").font(.title3).foregroundStyle(.green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(version.withDirection) 업데이트됐어요").font(.callout.weight(.semibold))
+                        Button("바뀐 점 보기") { updater.openReleasePage(version) }
+                            .buttonStyle(.link).font(.caption)
+                    }
+                    Spacer()
+                    Button { updater.dismissJustUpdated() } label: {
+                        Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("닫기")
+                }
+            }
+        }
     }
 }
 
@@ -765,6 +821,14 @@ enum PanelRenderer {
         let store = FeatureStore()
         SystemMonitor.shared.use("render", true)
         Displays.shared.refresh()
+        if let assumed = ProcessInfo.processInfo.environment["MACPYEON_RENDER_ASSUME_VERSION"] {
+            Updater.shared.previewCheck(assuming: assumed)
+            let icon = AppDelegate.menuBarImage(filled: false, badge: true, lines: ["CPU 12%", "RAM 67%"])
+            if let tiff = icon.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) {
+                try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory + "/menubar-badge.png"))
+            }
+        }
         // 측정값과 DDC 확인이 채워질 때까지 잠깐 돌린다.
         RunLoop.main.run(until: Date().addingTimeInterval(4.5))
         try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
