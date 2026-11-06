@@ -2,11 +2,11 @@ cask "macpyeon" do
   version "0.1.0"
   sha256 "82496e164a0d254ea41dbae90c7bd673fdd9bd75e62e66fb24c623128fc11e51"
 
-  url "https://github.com/Han-wo/EasyMacKR/releases/download/v#{version}/MacPyeon-#{version}.zip"
+  url "https://github.com/macpyeon/EasyMacKR/releases/download/v#{version}/MacPyeon-#{version}.zip"
   name "MacPyeon"
   name "맥편해"
   desc "Korean-friendly utilities: Hangul key, Windows-style shortcuts, task manager"
-  homepage "https://github.com/Han-wo/EasyMacKR"
+  homepage "https://github.com/macpyeon/EasyMacKR"
 
   depends_on macos: :ventura
 

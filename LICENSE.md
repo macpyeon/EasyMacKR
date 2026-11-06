@@ -1,4 +1,4 @@
-Required Notice: Copyright (c) 2026 Han-wo (https://github.com/Han-wo)
+Required Notice: Copyright (c) 2026 macpyeon (https://github.com/macpyeon)
 
 # PolyForm Strict License 1.0.0
 

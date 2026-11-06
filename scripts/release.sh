@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION="${1:?버전을 적어 주세요. 예) ./scripts/release.sh 0.2.0 owner/macpyeon}"
-REPO="${2:-${GITHUB_REPO:-Han-wo/EasyMacKR}}"
+REPO="${2:-${GITHUB_REPO:-macpyeon/EasyMacKR}}"
 
 # 배포판은 항상 임시 서명: 개발자 개인 인증서가 배포물에 들어가지 않게 한다.
 SIGN=adhoc UNIVERSAL=1 VERSION="$VERSION" ./scripts/build-app.sh
@@ -38,5 +38,5 @@ echo "✓ Casks/macpyeon.rb"
 echo
 echo "다음 단계:"
 echo "  1) GitHub 저장소 $REPO 에 릴리스 v$VERSION 을 만들고 $ZIP 을 올리세요."
-echo "  2) Casks/macpyeon.rb 를 커밋·푸시하세요."
-echo "  3) 설치:  brew tap han-wo/easymackr https://github.com/$REPO && brew trust han-wo/easymackr && brew install --cask macpyeon"
+echo "  2) Casks/macpyeon.rb 를 macpyeon/homebrew-tap 저장소의 Casks/ 에 복사해 커밋·푸시하세요."
+echo "  3) 설치:  brew install --cask macpyeon/tap/macpyeon"

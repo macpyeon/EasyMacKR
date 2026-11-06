@@ -20,9 +20,7 @@
 ### Homebrew
 
 ```sh
-brew tap han-wo/easymackr https://github.com/Han-wo/EasyMacKR
-brew trust han-wo/easymackr        # Homebrew 7 이상: 외부 tap은 한 번 신뢰 등록이 필요
-brew install --cask macpyeon
+brew install --cask macpyeon/tap/macpyeon
 ```
 
 업데이트는 `brew upgrade --cask macpyeon`
@@ -32,7 +30,7 @@ brew install --cask macpyeon
 Xcode 또는 Command Line Tools(`xcode-select --install`)가 필요합니다.
 
 ```sh
-git clone https://github.com/Han-wo/EasyMacKR.git
+git clone https://github.com/macpyeon/EasyMacKR.git
 cd EasyMacKR
 ./scripts/install.sh
 ```
@@ -164,7 +162,7 @@ brew uninstall --zap --cask macpyeon
 swift build              # 디버그 빌드
 ./scripts/test.sh        # 테스트 (Command Line Tools만으로도 동작)
 ./scripts/build-app.sh   # build/MacPyeon.app
-./scripts/release.sh 0.1.0 Han-wo/EasyMacKR   # 배포용 zip + Homebrew cask
+./scripts/release.sh 0.1.0 macpyeon/EasyMacKR   # 배포용 zip + Homebrew cask
 ```
 
 - `Sources/MacPyeonCore` — 시스템 API 없이 테스트하는 로직: 키 규칙, 한글 파일명(NFC), zip 작성기, DDC 패킷, 프로세스 사용률 계산
@@ -198,6 +196,6 @@ swift build              # 디버그 빌드
 | ❌ 수정·2차 저작물 | 코드를 고쳐서 쓰거나 이를 바탕으로 새 프로그램 만들기 |
 | ❌ 상업적 이용 | |
 
-버그 제보와 기능 제안은 [Issues](https://github.com/Han-wo/EasyMacKR/issues)로 보내 주세요. 위 요약은 이해를 돕기 위한 것이며, 법적 효력은 LICENSE.md 원문에 있습니다.
+버그 제보와 기능 제안은 [Issues](https://github.com/macpyeon/EasyMacKR/issues)로 보내 주세요. 위 요약은 이해를 돕기 위한 것이며, 법적 효력은 LICENSE.md 원문에 있습니다.
 
-Copyright (c) 2026 Han-wo
+Copyright (c) 2026 macpyeon
