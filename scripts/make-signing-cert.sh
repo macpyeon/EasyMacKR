@@ -1,7 +1,7 @@
 #!/bin/zsh
 # 이 Mac에서만 쓰는 자체 서명 코드 서명 인증서를 만든다. (선택 사항, 직접 빌드하는 사람용)
 # 개인 정보는 들어가지 않고(이름: MacPyeon Local Signing) 이 Mac 키체인에만 저장된다.
-# 배포판(scripts/release.sh)은 이 인증서를 쓰지 않고 항상 임시 서명한다.
+# 배포판(scripts/release.sh)은 이 인증서를 쓰지 않고 배포 전용 인증서(make-release-cert.sh)로 서명한다.
 # 임시 서명(ad-hoc)은 빌드할 때마다 서명이 바뀌어 손쉬운 사용 권한이 풀리지만,
 # 이 인증서로 서명하면 서명이 계속 같아서 권한을 한 번만 허용하면 된다.
 set -euo pipefail

@@ -1,6 +1,6 @@
 cask "macpyeon" do
   version "0.2.2"
-  sha256 "565e499ae3be4fd2c447f812131d6115d5c79d7f496a221ea8715185adfd341a"
+  sha256 "386baddb301a3cfe0d5b59f61396aa5cfb823fb0c23366ebfaa796f56512dbf4"
 
   url "https://github.com/macpyeon/EasyMacKR/releases/download/v#{version}/MacPyeon-#{version}.zip"
   name "MacPyeon"

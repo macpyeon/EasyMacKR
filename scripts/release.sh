@@ -11,9 +11,12 @@ cd "$(dirname "$0")/.."
 VERSION="${1:?버전을 적어 주세요. 예) ./scripts/release.sh 0.2.0 owner/macpyeon}"
 REPO="${2:-${GITHUB_REPO:-macpyeon/EasyMacKR}}"
 
-# 배포판은 항상 임시 서명: 개발자 개인 인증서가 배포물에 들어가지 않게 한다.
-SIGN=adhoc UNIVERSAL=1 VERSION="$VERSION" ./scripts/build-app.sh
-codesign -dr - build/MacPyeon.app 2>&1 | grep -q cdhash || { echo "✗ 배포판이 임시 서명이 아니에요. 중단합니다."; exit 1; }
+# 배포판은 배포 전용 인증서(MacPyeon Release)로만 서명한다. 매 버전 같은 인증서라
+# 업데이트해도 손쉬운 사용 권한이 유지된다. 개발자 개인 인증서(Local Signing)는 절대 쓰지 않는다.
+SIGN=release UNIVERSAL=1 VERSION="$VERSION" ./scripts/build-app.sh
+AUTH=$(codesign -dvv build/MacPyeon.app 2>&1 | awk -F= '/^Authority=/ && !seen {print $2; seen=1}')
+[[ "$AUTH" == "MacPyeon Release" ]] || { echo "✗ 배포판 서명이 MacPyeon Release가 아니에요($AUTH). 중단합니다."; exit 1; }
+codesign --verify --deep --strict build/MacPyeon.app
 
 mkdir -p dist
 ZIP="dist/MacPyeon-$VERSION.zip"
