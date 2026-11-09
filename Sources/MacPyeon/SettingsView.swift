@@ -310,8 +310,16 @@ private struct UpdateSection: View {
                         .foregroundStyle(Color.accentColor)
                     Spacer()
                     Button("바뀐 점") { updater.openReleasePage(release.version) }
-                    Button(updater.installedWithBrew ? "업데이트" : "받으러 가기") { updater.install() }
-                        .buttonStyle(.borderedProminent)
+                    if let step = updater.installStep {
+                        ProgressView().controlSize(.small)
+                        Text(step).font(.callout).foregroundStyle(.secondary)
+                    } else {
+                        Button(updater.canInstallInApp ? "업데이트" : "받으러 가기") { updater.install() }
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+                if let error = updater.installError {
+                    Text(error).font(.callout).foregroundStyle(.red)
                 }
             }
             Toggle("새 버전이 나오면 알려 주기", isOn: $updater.autoCheck)

@@ -48,16 +48,24 @@ public struct ReleaseInfo: Equatable, Sendable {
     public let tag: String
     public let pageURL: URL
     public let notes: String
+    /// 릴리스에 올린 앱 zip(MacPyeon-버전.zip). 앱 안에서 바로 업데이트할 때 쓴다.
+    public let downloadURL: URL?
+    /// GitHub가 알려 주는 그 zip의 sha256(소문자 16진수). 받은 파일과 맞춰 본다.
+    public let downloadSHA256: String?
 
-    public init(version: AppVersion, tag: String, pageURL: URL, notes: String) {
+    public init(version: AppVersion, tag: String, pageURL: URL, notes: String,
+                downloadURL: URL? = nil, downloadSHA256: String? = nil) {
         self.version = version
         self.tag = tag
         self.pageURL = pageURL
         self.notes = notes
+        self.downloadURL = downloadURL
+        self.downloadSHA256 = downloadSHA256
     }
 
     /// 초안·시험판이거나 버전을 읽을 수 없으면 nil.
-    public static func parse(json data: Data) -> ReleaseInfo? {
+    /// repo를 주면 앱 zip은 그 저장소의 그 버전 릴리스 주소일 때만 받아들인다.
+    public static func parse(json data: Data, repo: String? = nil) -> ReleaseInfo? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = object["tag_name"] as? String,
               let version = AppVersion(tag),
@@ -66,7 +74,24 @@ public struct ReleaseInfo: Equatable, Sendable {
         else { return nil }
         if object["draft"] as? Bool == true || object["prerelease"] as? Bool == true { return nil }
         let notes = (object["body"] as? String ?? "").replacingOccurrences(of: "\r\n", with: "\n")
-        return ReleaseInfo(version: version, tag: tag, pageURL: page, notes: notes)
+        // GitHub에서 받는 https 주소이고 이름이 정확히 MacPyeon-<버전>.zip인 파일만.
+        let file = "MacPyeon-\(version).zip"
+        let assets = object["assets"] as? [[String: Any]] ?? []
+        let asset = assets.first { asset in
+            guard asset["name"] as? String == file,
+                  let url = (asset["browser_download_url"] as? String).flatMap(URL.init(string:)),
+                  url.scheme == "https", url.host == "github.com" else { return false }
+            if let repo { return url.path == "/\(repo)/releases/download/\(tag)/\(file)" }
+            return true
+        }
+        let download = (asset?["browser_download_url"] as? String).flatMap(URL.init(string:))
+        let digest = (asset?["digest"] as? String).flatMap { d -> String? in
+            guard d.hasPrefix("sha256:") else { return nil }
+            let hex = d.dropFirst(7).lowercased()
+            return hex.count == 64 && hex.allSatisfy(\.isHexDigit) ? String(hex) : nil
+        }
+        return ReleaseInfo(version: version, tag: tag, pageURL: page, notes: notes,
+                           downloadURL: download, downloadSHA256: digest)
     }
 
     /// 알림에 보여 줄 짧은 변경 내용: 목록 줄만 최대 limit개.

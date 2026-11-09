@@ -48,6 +48,34 @@ struct UpdatesTests {
         #expect(r?.summaryLines() == ["첫째", "둘째"])
     }
 
+    @Test func findsAppZipOnlyFromGitHub() {
+        func parse(_ assets: String) -> URL? {
+            let json = """
+            {"tag_name":"v0.2.2","html_url":"https://github.com/macpyeon/EasyMacKR/releases/tag/v0.2.2","assets":[\(assets)]}
+            """.data(using: .utf8)!
+            return ReleaseInfo.parse(json: json)?.downloadURL
+        }
+        let good = #"{"name":"MacPyeon-0.2.2.zip","browser_download_url":"https://github.com/macpyeon/EasyMacKR/releases/download/v0.2.2/MacPyeon-0.2.2.zip"}"#
+        #expect(parse(good)?.lastPathComponent == "MacPyeon-0.2.2.zip")
+        #expect(parse(#"{"name":"MacPyeon-0.2.1.zip","browser_download_url":"https://github.com/a/b/MacPyeon-0.2.1.zip"}"#) == nil)
+        #expect(parse(#"{"name":"MacPyeon-0.2.2.zip","browser_download_url":"https://evil.example/MacPyeon-0.2.2.zip"}"#) == nil)
+        #expect(parse(#"{"name":"MacPyeon-0.2.2.zip","browser_download_url":"http://github.com/x.zip"}"#) == nil)
+        #expect(parse("") == nil)
+    }
+
+    @Test func checksRepoPathAndDigest() {
+        let json = """
+        {"tag_name":"v0.2.2","html_url":"https://github.com/macpyeon/EasyMacKR/releases/tag/v0.2.2","assets":[
+         {"name":"MacPyeon-0.2.2.zip","digest":"sha256:336460A545C84FB7FDA22B7E62F2F885CF3B4A5D0A0DBE5EDF4E5CEEE57F22AB",
+          "browser_download_url":"https://github.com/macpyeon/EasyMacKR/releases/download/v0.2.2/MacPyeon-0.2.2.zip"}]}
+        """.data(using: .utf8)!
+        let r = ReleaseInfo.parse(json: json, repo: "macpyeon/EasyMacKR")
+        #expect(r?.downloadURL != nil)
+        #expect(r?.downloadSHA256 == "336460a545c84fb7fda22b7e62f2f885cf3b4a5d0a0dbe5edf4e5ceee57f22ab")
+        // 다른 저장소 주소는 받지 않는다.
+        #expect(ReleaseInfo.parse(json: json, repo: "someone/else")?.downloadURL == nil)
+    }
+
     @Test func ignoresPrereleaseAndBadURL() {
         let pre = #"{"tag_name":"v9.0.0","html_url":"https://x.y/z","prerelease":true}"#.data(using: .utf8)!
         #expect(ReleaseInfo.parse(json: pre) == nil)

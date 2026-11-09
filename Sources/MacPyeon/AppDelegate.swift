@@ -158,7 +158,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(disabled("맥편해 \(Updater.shared.currentText)"))
         if let release = Updater.shared.available {
-            menu.addItem(item(Updater.shared.installedWithBrew ? "⬆︎ 새 버전 \(release.version) 업데이트…" : "⬆︎ 새 버전 \(release.version) 받으러 가기…", #selector(installUpdate)))
+            let updater = Updater.shared
+            if let step = updater.installStep {
+                menu.addItem(disabled("⏳ " + step))
+            } else {
+                menu.addItem(item(updater.canInstallInApp ? "⬆︎ 새 버전 \(release.version) 업데이트" : "⬆︎ 새 버전 \(release.version) 받으러 가기…", #selector(installUpdate)))
+            }
         }
         if store.needsAccessibility && !store.accessibilityGranted {
             menu.addItem(item("⚠️ 손쉬운 사용 권한 허용하기…", #selector(openAccessibility)))

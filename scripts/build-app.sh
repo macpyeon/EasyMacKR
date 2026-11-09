@@ -29,6 +29,10 @@ cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 if [[ -z "${VERSION:-}" ]]; then
   VERSION=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)
 fi
+# 배포판 표시: 앱 안 업데이트(zip으로 바꾸기)는 배포판에서만 한다(직접 빌드한 앱을 덮어쓰지 않게).
+if [[ "${SIGN:-}" == adhoc ]]; then
+  plutil -replace MacPyeonReleaseBuild -bool YES "$APP/Contents/Info.plist"
+fi
 if [[ -n "${VERSION:-}" ]]; then
   plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"
   plutil -replace CFBundleVersion -string "$VERSION" "$APP/Contents/Info.plist"

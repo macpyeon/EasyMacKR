@@ -296,16 +296,26 @@ private struct UpdateCard: View {
                     }
                     Spacer(minLength: 0)
                 }
-                HStack(spacing: 8) {
-                    Button(updater.installedWithBrew ? "업데이트" : "받으러 가기") { updater.install() }
-                        .buttonStyle(.borderedProminent)
-                    Button("바뀐 점") { updater.openReleasePage(release.version) }
-                    Spacer()
-                    Button("이번 버전 건너뛰기") { updater.skip() }
-                        .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                if let step = updater.installStep {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(step).font(.caption)
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        Button(updater.canInstallInApp ? "업데이트" : "받으러 가기") { updater.install() }
+                            .buttonStyle(.borderedProminent)
+                        Button("바뀐 점") { updater.openReleasePage(release.version) }
+                        Spacer()
+                        Button("이번 버전 건너뛰기") { updater.skip() }
+                            .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                if updater.installedWithBrew {
-                    Text("터미널에서 brew로 업데이트해요. 끝나면 손쉬운 사용 권한을 한 번 다시 켜야 할 수 있어요.")
+                if let error = updater.installError {
+                    Text(error).font(.caption2).foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if updater.canInstallInApp {
+                    Text("누르면 알아서 받아 설치하고 다시 켜요. 끝난 뒤 손쉬운 사용 권한 창이 뜨면 맥편해를 켜 주세요.")
                         .font(.caption2).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

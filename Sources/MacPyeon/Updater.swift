@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CryptoKit
 import Foundation
 import MacPyeonCore
 
@@ -19,6 +20,9 @@ final class Updater: ObservableObject {
     @Published private(set) var justUpdated: AppVersion?
     @Published private(set) var checking = false
     @Published private(set) var lastResult: String?
+    /// 업데이트 버튼을 누른 뒤 진행 중이면 보여 줄 문구.
+    @Published private(set) var installStep: String?
+    @Published private(set) var installError: String?
     /// 이번 실행이 지난 실행과 다른 버전인지(업데이트·재설치 직후).
     private(set) var versionChangedThisLaunch = false
 
@@ -41,7 +45,6 @@ final class Updater: ObservableObject {
     private(set) var current: AppVersion? = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String).flatMap(AppVersion.init)
     private var timer: Timer?
     private var wakeObserver: NSObjectProtocol?
-    private var lastInstallLaunch: Date?
     /// 렌더링 확인용 실행에서는 설정에 아무것도 남기지 않는다.
     private var persists = true
 
@@ -69,11 +72,12 @@ final class Updater: ObservableObject {
         }?.1
     }
 
-    /// brew로 설치했는지(그러면 터미널에서 brew로 업데이트한다).
+    /// brew로 설치했는지(그러면 뒤에서 brew로 업데이트한다).
     var installedWithBrew: Bool { brewPath != nil }
 
     func start() {
         noteLaunchVersion()
+        reportUnfinishedUpdate()
         guard current != nil else { return }   // 번들 없이 돌리는 개발판은 확인하지 않는다
         guard autoCheck else { return }
         restoreSavedRelease()
@@ -97,7 +101,7 @@ final class Updater: ObservableObject {
     /// 지난번에 받아 둔 릴리스로 알림을 되살린다(앱을 다시 켜도 12시간 기다리지 않게).
     private func restoreSavedRelease() {
         guard let current, let data = UserDefaults.standard.data(forKey: Keys.latestJSON),
-              let release = ReleaseInfo.parse(json: data) else { return }
+              let release = ReleaseInfo.parse(json: data, repo: Self.repo) else { return }
         available = UpdatePolicy.shouldNotify(current: current, latest: release.version, skipped: skippedVersion) ? release : nil
     }
 
@@ -127,7 +131,7 @@ final class Updater: ObservableObject {
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             let body = status == 200 ? data : nil
-            let release = body.flatMap(ReleaseInfo.parse(json:))
+            let release = body.flatMap { ReleaseInfo.parse(json: $0, repo: Self.repo) }
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.checking = false
@@ -176,66 +180,289 @@ final class Updater: ObservableObject {
         lastResult = nil
     }
 
-    /// brew로 깔았으면 터미널에서 업데이트 명령을 실행하고, 아니면 릴리스 페이지를 연다.
+    // MARK: 앱 안에서 업데이트
+    //
+    // 버튼 한 번으로: 맥편해가 스스로 끝난 뒤, 뒤에서 도는 작은 스크립트가 새 버전을 깔고 다시 켠다.
+    // (brew 7부터는 brew를 띄운 앱을 brew가 끄지 않으므로, 끄는 일은 맥편해가 직접 한다)
+
+    /// 이 앱이 brew가 관리하는 그 사본인지(직접 빌드한 다른 사본에서 누르면 brew로 가지 않는다).
+    private var isBrewCopy: Bool {
+        installedWithBrew && Bundle.main.bundlePath == "/Applications/MacPyeon.app"
+    }
+
+    /// 배포판 zip으로 바꿔도 되는 사본인지: 배포판이고, 앱 폴더에 쓸 수 있어야 한다.
+    private var canSwapFromZip: Bool {
+        guard Bundle.main.object(forInfoDictionaryKey: "MacPyeonReleaseBuild") as? Bool == true else { return false }
+        let app = Bundle.main.bundlePath
+        let parent = (app as NSString).deletingLastPathComponent
+        return FileManager.default.isWritableFile(atPath: parent) && FileManager.default.isWritableFile(atPath: app)
+    }
+
+    /// 버튼 한 번으로 업데이트할 수 있는지(아니면 릴리스 페이지로 안내).
+    var canInstallInApp: Bool {
+        guard current != nil else { return false }
+        return isBrewCopy || (available?.downloadURL != nil && canSwapFromZip)
+    }
+
+    private var workDir: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MacPyeon", isDirectory: true)
+    }
+    private var resultFile: URL { workDir.appendingPathComponent("update-result.txt") }
+
     func install() {
-        let page = available?.pageURL ?? Self.releasesPage
-        guard let brew = brewPath, let target = available?.version else {
-            NSWorkspace.shared.open(page)
+        guard installStep == nil else { return }
+        guard let release = available, canInstallInApp else {
+            NSWorkspace.shared.open(available?.pageURL ?? Self.releasesPage)
             return
         }
-        // 연달아 누르면 brew가 두 번 돌다 잠금 때문에 실패한다: 잠깐은 열린 터미널만 앞으로.
-        if let last = lastInstallLaunch, Date().timeIntervalSince(last) < 120 {
-            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"))
-            return
+        installError = nil
+        if isBrewCopy, let brew = brewPath {
+            prepareBrew(brew)
+        } else if let url = release.downloadURL {
+            downloadZip(url, sha256: release.downloadSHA256, target: release.version)
         }
-        // target은 숫자와 점으로만 이뤄진 문자열(AppVersion.description), brew는 고정 경로라 끼어들 여지가 없다.
+    }
+
+    private func fail(_ message: String) {
+        installStep = nil
+        installError = message
+        DebugLog.write("update failed: \(message)")
+    }
+
+    // MARK: brew
+
+    /// 1단계(맥편해가 켜진 채): brew 목록을 새로 받고, 정말 새 버전이 있는지 본다.
+    private func prepareBrew(_ brew: String) {
+        installStep = "새 버전을 확인하는 중…"
+        let info = workDir.appendingPathComponent("brew-info.json")
+        try? FileManager.default.removeItem(at: info)
         let script = """
         #!/bin/zsh
-        clear
-        BREW="\(brew)"
-        TARGET="\(target.description)"
-        APP="/Applications/MacPyeon.app"
-        echo "맥편해를 $TARGET 버전으로 업데이트합니다…"
-        echo
-        echo "▸ 최신 목록 받는 중 (brew update)"
+        BREW="$1"; INFO="$2"
+        export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        export HOMEBREW_NO_ENV_HINTS=1
+        echo "== $(date) prepare"
         "$BREW" update --quiet
-        echo
-        echo "▸ 업데이트 중"
-        "$BREW" upgrade --cask macpyeon/tap/macpyeon
-        NOW=$(/usr/bin/defaults read "$APP/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null)
-        echo
-        if [[ "$NOW" == "$TARGET" ]]; then
-          echo "✓ $TARGET 버전으로 업데이트했어요. 맥편해가 다시 켜집니다."
-          echo "  키보드·마우스 기능이 멈추면 시스템 설정 > 개인정보 보호 및 보안 > 손쉬운 사용에서"
-          echo "  '맥편해'를 한 번 껐다가 다시 켜 주세요."
-        else
-          echo "✗ 아직 ${NOW:-이전} 버전이에요."
-          echo "  새 버전이 막 나와서 brew 목록에 아직 안 올라왔을 수 있어요. 몇 분 뒤 다시 눌러 주세요."
-        fi
-        echo
-        echo "이 창은 닫아도 됩니다."
+        echo "update-exit=$?"
+        HOMEBREW_NO_AUTO_UPDATE=1 "$BREW" info --cask --json=v2 macpyeon/tap/macpyeon > "$INFO"
+        echo "info-exit=$?"
         """
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("MacPyeon", isDirectory: true)
-        let url = dir.appendingPathComponent("update.command")
-        do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try script.write(to: url, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
-        } catch {
-            NSWorkspace.shared.open(page)
-            return
-        }
-        lastInstallLaunch = Date()
-        let terminal = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
-        NSWorkspace.shared.open([url], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration()) { _, error in
-            if error != nil {
-                DispatchQueue.main.async {
-                    self.lastInstallLaunch = nil
-                    NSWorkspace.shared.open(page)
-                }
+        run(script: script, name: "update-prepare.sh", arguments: [brew, info.path], timeout: 600) { [weak self] status, log in
+            guard let self else { return }
+            let tapVersion = (try? Data(contentsOf: info))
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                .flatMap { ($0["casks"] as? [[String: Any]])?.first?["version"] as? String }
+                .flatMap(AppVersion.init)
+            if let tapVersion, let current = self.current, current < tapVersion {
+                self.upgradeWithBrew(brew)
+            } else if status == nil {
+                self.fail("brew가 너무 오래 걸려서 멈췄어요. 잠시 뒤 다시 눌러 주세요.")
+            } else if !log.contains("update-exit=0") {
+                self.fail("brew 목록을 새로 받지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.")
+            } else if tapVersion == nil {
+                self.fail("brew에서 맥편해를 찾지 못했어요. 터미널에서 brew upgrade --cask macpyeon 을 실행해 주세요.")
+            } else {
+                self.fail("새 버전이 아직 brew 목록에 올라오지 않았어요. 몇 분 뒤 다시 눌러 주세요.")
             }
         }
+    }
+
+    /// 2단계: 맥편해가 끝나기를 기다렸다가 brew로 올리고 다시 켜는 스크립트를 띄우고 끝낸다.
+    private func upgradeWithBrew(_ brew: String) {
+        let script = """
+        #!/bin/zsh
+        BREW="$1"; APP="$2"; PID="$3"; RESULT="$4"
+        export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        export HOMEBREW_NO_ENV_HINTS=1
+        echo "== $(date) upgrade"
+        for i in {1..600}; do kill -0 "$PID" 2>/dev/null || break; sleep 0.1; done
+        if kill -0 "$PID" 2>/dev/null; then echo "app still running"; exit 1; fi
+        HOMEBREW_NO_AUTO_UPDATE=1 "$BREW" upgrade --cask macpyeon/tap/macpyeon
+        echo "brew-exit=$?" > "$RESULT"
+        # 성공하든 못 하든 맥편해는 다시 켠다.
+        /usr/bin/pgrep -qfx "$APP/Contents/MacOS/MacPyeon" || /usr/bin/open "$APP"
+        """
+        launchAndQuit(script: script, name: "update-brew.sh",
+                      arguments: [brew, Bundle.main.bundlePath, pidString, resultFile.path])
+    }
+
+    // MARK: zip 직접 설치
+
+    private func downloadZip(_ url: URL, sha256: String?, target: AppVersion) {
+        installStep = "새 버전을 받는 중…"
+        // 시도마다 새 폴더(같은 경로의 번들 정보가 캐시되지 않게).
+        let work = workDir.appendingPathComponent("update", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let bundleID = Bundle.main.bundleIdentifier
+        URLSession.shared.downloadTask(with: url) { [weak self] tmp, response, _ in
+            let result: Result<URL, UpdateFailure> = {
+                guard let tmp, (response as? HTTPURLResponse)?.statusCode == 200 else {
+                    return .failure(UpdateFailure(message: "내려받지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요."))
+                }
+                let fm = FileManager.default
+                try? fm.removeItem(at: work.deletingLastPathComponent())
+                let zip = work.appendingPathComponent("MacPyeon.zip")
+                let unpacked = work.appendingPathComponent("new", isDirectory: true)
+                do {
+                    try fm.createDirectory(at: unpacked, withIntermediateDirectories: true)
+                    try fm.moveItem(at: tmp, to: zip)
+                } catch {
+                    return .failure(UpdateFailure(message: "받은 파일을 저장하지 못했어요."))
+                }
+                if let sha256, Self.sha256(of: zip) != sha256 {
+                    return .failure(UpdateFailure(message: "받은 파일이 릴리스와 달라요. 다시 눌러 주세요."))
+                }
+                guard Self.runTool("/usr/bin/ditto", ["-x", "-k", zip.path, unpacked.path]) == 0 else {
+                    return .failure(UpdateFailure(message: "받은 파일을 풀지 못했어요."))
+                }
+                let app = unpacked.appendingPathComponent("MacPyeon.app")
+                // 맞는 앱인지: 같은 번들 ID, 기대한 버전, 서명이 손상되지 않았는지.
+                let plist = (try? Data(contentsOf: app.appendingPathComponent("Contents/Info.plist")))
+                    .flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }
+                guard let plist, plist["CFBundleIdentifier"] as? String == bundleID,
+                      (plist["CFBundleShortVersionString"] as? String).flatMap(AppVersion.init) == target,
+                      Self.runTool("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path]) == 0
+                else { return .failure(UpdateFailure(message: "받은 파일이 올바르지 않아요. 릴리스 페이지에서 직접 받아 주세요.")) }
+                return .success(app)
+            }()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .failure(let f): self.fail(f.message)
+                case .success(let app): self.swapAndRelaunch(newApp: app)
+                }
+            }
+        }.resume()
+    }
+
+    /// 새 앱을 먼저 지금 앱 옆에 복사해 두고, 맥편해가 끝나면 이름만 바꿔 교체한 뒤 다시 켠다.
+    private func swapAndRelaunch(newApp: URL) {
+        let script = """
+        #!/bin/zsh
+        PID="$1"; NEW="$2"; DEST="$3"; RESULT="$4"
+        PARENT="${DEST:h}"; STAGE="$PARENT/.MacPyeon-update.app"; OLD="$PARENT/.MacPyeon-old.app"
+        echo "== $(date) swap"
+        rm -rf "$STAGE" "$OLD"
+        # 같은 폴더로 먼저 복사(여기서 실패해도 지금 앱은 그대로다).
+        if ! /usr/bin/ditto "$NEW" "$STAGE"; then
+          rm -rf "$STAGE"; echo "stage-failed" > "$RESULT"
+          /usr/bin/pgrep -qfx "$DEST/Contents/MacOS/MacPyeon" || /usr/bin/open "$DEST"
+          exit 1
+        fi
+        for i in {1..600}; do kill -0 "$PID" 2>/dev/null || break; sleep 0.1; done
+        if kill -0 "$PID" 2>/dev/null; then rm -rf "$STAGE"; echo "app still running"; exit 1; fi
+        # 같은 폴더 안에서 이름만 바꾸므로 중간에 반쯤 바뀐 앱이 남지 않는다.
+        if mv "$DEST" "$OLD"; then
+          if mv "$STAGE" "$DEST"; then
+            /usr/bin/xattr -dr com.apple.quarantine "$DEST" 2>/dev/null
+            rm -rf "$OLD"
+            echo "ok" > "$RESULT"
+          else
+            mv "$OLD" "$DEST"
+            echo "swap-failed" > "$RESULT"
+          fi
+        else
+          echo "swap-failed" > "$RESULT"
+        fi
+        rm -rf "$STAGE"
+        /usr/bin/open "$DEST"
+        """
+        launchAndQuit(script: script, name: "update-swap.sh",
+                      arguments: [pidString, newApp.path, Bundle.main.bundlePath, resultFile.path])
+    }
+
+    // MARK: 도우미
+
+    private var pidString: String { String(ProcessInfo.processInfo.processIdentifier) }
+
+    /// 마무리 스크립트를 띄우고 맥편해를 끝낸다. 무언가 종료를 막아 끝나지 않으면 알리고 멈춘다.
+    private func launchAndQuit(script: String, name: String, arguments: [String]) {
+        try? FileManager.default.removeItem(at: resultFile)
+        guard run(script: script, name: name, arguments: arguments, timeout: nil, completion: nil) else { return }
+        installStep = "새 버전으로 다시 켜는 중…"
+        DebugLog.write("update: quitting so \(name) can finish")
+        DispatchQueue.main.async { NSApp.terminate(nil) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            self?.fail("맥편해가 꺼지지 않아 업데이트를 멈췄어요. 열려 있는 창을 닫고 다시 눌러 주세요.")
+        }
+    }
+
+    /// 지난번 업데이트가 끝나지 못했으면(새 버전으로 바뀌지 않았으면) 알려 준다. noteLaunchVersion 뒤에 부른다.
+    private func reportUnfinishedUpdate() {
+        guard let text = try? String(contentsOf: resultFile, encoding: .utf8) else { return }
+        try? FileManager.default.removeItem(at: resultFile)
+        guard !versionChangedThisLaunch else { return }
+        installError = text.contains("stage-failed") || text.contains("swap-failed")
+            ? "새 버전으로 바꾸지 못했어요. 앱 폴더 권한을 확인하거나 릴리스 페이지에서 직접 받아 주세요."
+            : "지난 업데이트가 끝나지 않았어요. 다시 눌러 주세요."
+    }
+
+    /// 스크립트를 파일로 써서 뒤에서 실행한다(맥편해가 끝나도 계속 돈다). 출력은 update.log에.
+    /// completion의 상태값이 nil이면 시간 제한에 걸려 멈춘 것.
+    @discardableResult
+    private func run(script: String, name: String, arguments: [String], timeout: TimeInterval?,
+                     completion: ((Int32?, String) -> Void)?) -> Bool {
+        let fm = FileManager.default
+        let url = workDir.appendingPathComponent(name)
+        let logURL = workDir.appendingPathComponent("update.log")
+        do {
+            try fm.createDirectory(at: workDir, withIntermediateDirectories: true)
+            try script.write(to: url, atomically: true, encoding: .utf8)
+            try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+            fm.createFile(atPath: logURL.path, contents: nil)
+        } catch {
+            fail("업데이트를 시작하지 못했어요.")
+            return false
+        }
+        let log = try? FileHandle(forWritingTo: logURL)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        p.arguments = [url.path] + arguments
+        p.standardOutput = log ?? FileHandle.nullDevice
+        p.standardError = log ?? FileHandle.nullDevice
+        var timedOut = false
+        if let completion {
+            p.terminationHandler = { proc in
+                let text = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
+                DispatchQueue.main.async { completion(timedOut ? nil : proc.terminationStatus, text) }
+            }
+        }
+        do {
+            try p.run()
+        } catch {
+            fail("업데이트를 시작하지 못했어요.")
+            return false
+        }
+        if let timeout {
+            DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+                guard p.isRunning else { return }
+                timedOut = true
+                p.terminate()
+            }
+        }
+        return true
+    }
+
+    private struct UpdateFailure: Error { let message: String }
+
+    private static func sha256(of file: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while let chunk = try? handle.read(upToCount: 1 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func runTool(_ path: String, _ args: [String]) -> Int32 {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = args
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return -1 }
+        p.waitUntilExit()
+        return p.terminationStatus
     }
 
     /// 알고 있는 릴리스면 그 페이지, 아니면 태그 주소.
