@@ -13,6 +13,8 @@ final class EventTap {
     }
 
     var isRunning: Bool { tap != nil }
+    /// 만들어져 있고 시스템이 꺼 두지도 않았는지.
+    var isHealthy: Bool { tap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false }
 
     /// 시스템이 탭을 꺼 버렸는지(처리 지연, 보안 입력 등). 꺼져 있으면 다시 켜고 true.
     @discardableResult
@@ -210,34 +212,48 @@ final class KeyRouter {
     }
 
     /// 창 전환 중의 이벤트. nil이면 평소대로 처리, true면 삼킨다.
+    /// 맥 기본 ⌘Tab과 같은 조작: ⌘를 떼면 이동, Tab·⇧Tab·화살표로 고르기, Esc 취소, Q 앱 종료, H 앱 가리기.
     private func switcherEvent(type: CGEventType, event: CGEvent) -> Bool? {
         let switcher = WindowSwitcher.shared
         switch type {
         case .flagsChanged:
-            // ⌥를 떼면 고른 창으로 간다.
-            if event.flags.rawValue & RawFlag.option == 0 {
+            // ⌘를 떼면 고른 창으로 간다.
+            if event.flags.rawValue & RawFlag.command == 0 {
                 DispatchQueue.main.async { switcher.commit() }
             }
             return false
         case .keyDown:
+            // ⌘를 이미 뗐는데 아직 전환 중이면(창 목록을 모으는 중) 친 키를 모아 뒀다가 전환 뒤에 보낸다.
+            if event.flags.rawValue & RawFlag.command == 0 {
+                switcher.typeAhead(event, isDown: true, keyCode: event.getIntegerValueField(.keyboardEventKeycode))
+                return true
+            }
             let code = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
             let shift = event.flags.rawValue & RawFlag.shift != 0
+            let repeated = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
             switch code {
             case KeyCode.tab:
                 DispatchQueue.main.async { switcher.step(shift ? -1 : 1) }
+            case KeyCode.grave:
+                DispatchQueue.main.async { switcher.step(shift ? 1 : -1) }
             case KeyCode.leftArrow, KeyCode.upArrow:
                 DispatchQueue.main.async { switcher.step(-1) }
             case KeyCode.rightArrow, KeyCode.downArrow:
                 DispatchQueue.main.async { switcher.step(1) }
             case KeyCode.escape:
                 DispatchQueue.main.async { switcher.cancel() }
-            case KeyCode.returnKey, KeyCode.keypadEnter, KeyCode.space:
+            case KeyCode.returnKey, KeyCode.keypadEnter:
                 DispatchQueue.main.async { switcher.commit() }
+            case KeyCode.q where !repeated:
+                DispatchQueue.main.async { switcher.quitSelectedApp() }
+            case KeyCode.h where !repeated:
+                DispatchQueue.main.async { switcher.hideSelectedApp() }
             default:
                 break
             }
             return true
         case .keyUp:
+            switcher.typeAhead(event, isDown: false, keyCode: event.getIntegerValueField(.keyboardEventKeycode))
             return true
         case .leftMouseDown, .rightMouseDown:
             // 목록 밖을 누르면 닫는다. 목록 안 클릭은 패널이 처리한다.

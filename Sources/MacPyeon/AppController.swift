@@ -57,7 +57,7 @@ final class AppController {
             if !unavailable.isEmpty { store.replace(with: store.enabled.subtracting(unavailable)) }
             // 업데이트로 새로 생긴 추천 기능은 한 번 켜 준다(사용자가 이미 본 기능은 건드리지 않음).
             var added = store.newlyRecommendedFeatures().subtracting(store.enabled)
-            // AltTab을 쓰는 사람에게는 ⌥Tab을 가로채지 않는다.
+            // AltTab을 쓰는 사람에게는 ⌘Tab을 가로채지 않는다.
             if NSWorkspace.shared.urlForApplication(withBundleIdentifier: Conflicts.altTabBundleID) != nil {
                 added.remove(.windowSwitcher)
             }
@@ -79,6 +79,7 @@ final class AppController {
         KeepAwake.shared.stop()
         Displays.shared.resetSoftware()
         tap.stop()
+        NativeCommandTab.set(takenOver: false)
         watcher?.stop()
     }
 
@@ -131,8 +132,41 @@ final class AppController {
         }
     }
 
+    /// AltTab이 돌고 있으면 ⌘Tab은 그 앱에 양보한다(둘이 같이 가로채면 엉킨다).
+    private var switcherYields = false
+
+    /// AltTab이 ⌘를 누르는 단축키로 설정돼 있으면(그 앱이 기본 ⌘Tab을 꺼 둔다) 양보할 때 기본 ⌘Tab을 켜지 않는다.
+    private static func altTabUsesCommand() -> Bool {
+        guard let d = UserDefaults(suiteName: Conflicts.altTabBundleID) else { return false }
+        return ["holdShortcut", "holdShortcut2", "holdShortcut3"].contains { d.string(forKey: $0)?.contains("⌘") == true }
+    }
+
+    /// 창 전환을 켰고 키보드 탭이 실제로 키를 받을 때만 기본 ⌘Tab을 끈다.
+    /// 권한이 없거나, 탭이 멈췄거나, 비밀번호 칸 등 '보안 입력' 중(탭에 키가 오지 않음)이면 기본 ⌘Tab을 켜 둔다.
+    private func syncCommandTab() {
+        let on = store.isOn(.windowSwitcher)
+        let yields = on && !NSRunningApplication.runningApplications(withBundleIdentifier: Conflicts.altTabBundleID).isEmpty
+        if yields != switcherYields {
+            switcherYields = yields
+            router.rules.enabled = yields ? store.enabled.subtracting([.windowSwitcher]) : store.enabled
+            checkConflicts()
+        }
+        let want = on && !yields && NativeCommandTab.canTakeOver && AXIsProcessTrusted() && tap.isHealthy
+            && !IsSecureEventInputEnabled()
+        NativeCommandTab.set(takenOver: want, restoreNative: !(yields && Self.altTabUsesCommand()))
+        if on && commandTabTimer == nil {
+            let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.syncCommandTab() }
+            RunLoop.main.add(t, forMode: .common)
+            commandTabTimer = t
+        } else if !on, let t = commandTabTimer {
+            t.invalidate()
+            commandTabTimer = nil
+        }
+    }
+    private var commandTabTimer: Timer?
+
     private func syncRouter() {
-        router.rules.enabled = store.enabled
+        router.rules.enabled = switcherYields ? store.enabled.subtracting([.windowSwitcher]) : store.enabled
         router.scroll = ScrollOptions(enabled: store.enabled, linesPerNotch: store.linesPerNotch)
         readout.items = store.statItems
         if router.tapDetector.choice != store.hangulKey {
@@ -177,6 +211,7 @@ final class AppController {
             tapRetryTimer = nil
             store.tapStatus = .off
         }
+        syncCommandTab()
         writeStatus("updateTap")
     }
 
@@ -329,6 +364,7 @@ final class AppController {
             KeyBindingFile.sync(enabled: [])
         }
         CapsLockRemap.set(false)
+        NativeCommandTab.restoreAndClearMarker()
         AudioDevices.restoreMicIfMutedByVolume()
         if QuickTools.desktopIconsHidden { QuickTools.setDesktopIconsHidden(false) }
         try? SMAppService.mainApp.unregister()

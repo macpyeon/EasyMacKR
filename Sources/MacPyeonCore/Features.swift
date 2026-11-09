@@ -181,7 +181,7 @@ public enum FeatureCatalog {
         FeatureInfo(
             id: .taskManager, category: .windows, kind: .eventTap,
             title: "작업 관리자 열기 (Ctrl+⌘+Delete)",
-            detail: "Ctrl+⌘+Delete 또는 Ctrl+Shift+Esc로 작업 관리자를 엽니다. 프로그램별 CPU·메모리·GPU 사용량을 보고 종료·강제 종료할 수 있어요.",
+            detail: "Ctrl+⌘+Delete 또는 Ctrl+Shift+Esc로 작업 관리자를 엽니다. 프로그램별 CPU·메모리·GPU 사용량을 보고 종료·강제 종료할 수 있어요. 앱 줄을 펼치면 안의 프로세스를 하나씩 끝낼 수도 있어요.",
             recommended: true, note: nil),
         FeatureInfo(
             id: .finderF2Rename, category: .windows, kind: .eventTap,
@@ -220,9 +220,9 @@ public enum FeatureCatalog {
             recommended: true, note: nil),
         FeatureInfo(
             id: .windowSwitcher, category: .windows, kind: .eventTap,
-            title: "창 단위 전환 (⌥Tab)",
-            detail: "⌥(Alt)를 누른 채 Tab을 누르면 지금 데스크탑의 창과 최소화한 창 목록이 뜨고, 손을 떼면 고른 창으로 갑니다. ⇧를 같이 누르면 거꾸로, Esc는 취소. 같은 앱의 창도 하나씩 고를 수 있어요. (Numbers·Pages·Keynote에서는 표 칸의 ⌥Tab을 그대로 둡니다)",
-            recommended: true, note: "화면 기록 권한을 허용하면 창 미리보기도 보여 줘요(선택)."),
+            title: "⌘Tab을 창 단위로",
+            detail: "맥 기본 ⌘Tab(앱 단위) 대신, 창을 하나씩 보여 주는 전환기를 씁니다. 같은 앱의 창도 따로 고를 수 있고 최소화한 창도 나옵니다. 조작은 기본 ⌘Tab과 같아요: ⌘를 누른 채 Tab(⇧Tab으로 거꾸로), 떼면 이동, Esc 취소, Q 앱 종료, H 앱 가리기. 짧게 눌렀다 떼면 바로 전 창으로 갑니다.",
+            recommended: true, note: "끄거나 맥편해를 끝내면 기본 ⌘Tab이 돌아와요. 비밀번호 입력 중이나 AltTab이 실행 중일 때는 기본 ⌘Tab을 씁니다. 화면 기록 권한을 허용하면 창 미리보기도 보여 줘요(선택)."),
         FeatureInfo(
             id: .finderWindowsShortcuts, category: .windows, kind: .eventTap,
             title: "Finder 윈도우 단축키",

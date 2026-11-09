@@ -12,6 +12,11 @@ struct TaskManagerView: View {
     @State private var selection: ProcessRow.ID?
     @State private var confirmForce: ProcessRow?
     @State private var adminTarget: ProcessRow?
+    /// 펼친 묶음 줄 id
+    @State private var expanded = Set<String>()
+    /// `--demo-taskmanager`(화면 확인용): 묶음을 모두 펼쳐 둔다.
+    static var demoExpandAll = false
+    private func isExpanded(_ row: ProcessRow) -> Bool { Self.demoExpandAll || expanded.contains(row.id) }
 
     enum Scope: String, CaseIterable {
         case apps = "앱"
@@ -28,11 +33,29 @@ struct TaskManagerView: View {
                 case .all: return true
                 }
             }
-            .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) || "\($0.id)" == query }
+            .filter { query.isEmpty || matches($0) || ($0.children ?? []).contains(where: matches) }
             .sorted(using: sortOrder)
+            .flatMap { row -> [ProcessRow] in
+                // 펼친 묶음은 바로 아래에 안의 프로세스를 같은 기준으로 정렬해 끼운다.
+                guard let children = row.children, isExpanded(row) else { return [row] }
+                return [row] + children.sorted(using: sortOrder)
+            }
     }
 
-    private var selectedRow: ProcessRow? { monitor.rows.first { $0.id == selection } }
+    private func toggle(_ row: ProcessRow) {
+        if expanded.contains(row.id) { expanded.remove(row.id) } else { expanded.insert(row.id) }
+    }
+
+    private func matches(_ row: ProcessRow) -> Bool {
+        row.name.localizedCaseInsensitiveContains(query) || "\(row.pid)" == query
+    }
+
+    private func findRow(_ id: ProcessRow.ID?) -> ProcessRow? {
+        guard let id else { return nil }
+        return monitor.rows.lazy.compactMap { $0.find(id) }.first
+    }
+
+    private var selectedRow: ProcessRow? { findRow(selection) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,18 +76,35 @@ struct TaskManagerView: View {
             }
             .padding(10)
 
+            // 묶은 줄은 ▸를 눌러 펼치면 안의 프로세스를 하나씩 보고 따로 끝낼 수 있다(윈도우 작업 관리자처럼).
             Table(visibleRows, selection: $selection, sortOrder: $sortOrder) {
                 TableColumn("이름", value: \.name) { row in
                     HStack(spacing: 6) {
+                        if row.depth > 0 {
+                            Spacer().frame(width: 26)
+                        } else if row.children != nil {
+                            Button { toggle(row) } label: {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .rotationEffect(.degrees(isExpanded(row) ? 90 : 0))
+                                    .frame(width: 14, height: 16)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .help(expanded.contains(row.id) ? "접기" : "펼쳐서 프로세스 하나씩 보기")
+                        } else {
+                            Spacer().frame(width: 14)
+                        }
                         if let icon = row.app?.icon {
                             Image(nsImage: icon).resizable().frame(width: 16, height: 16)
                         } else {
                             Image(systemName: "gearshape").foregroundStyle(.secondary).frame(width: 16)
                         }
                         Text(row.name).lineLimit(1)
-                        if row.helperCount > 0 {
-                            Text("+\(row.helperCount)").font(.caption).foregroundStyle(.secondary)
-                                .help("도우미 프로세스 \(row.helperCount)개 포함")
+                        if row.children != nil {
+                            Text("(\(row.pids.count))").font(.caption).foregroundStyle(.secondary)
+                                .help("프로세스 \(row.pids.count)개. 펼치면 하나씩 보고 따로 끝낼 수 있어요")
                         }
                     }
                 }
@@ -84,8 +124,8 @@ struct TaskManagerView: View {
                         .foregroundStyle(heat(row.gpu * 2))
                 }
                 .width(60)
-                TableColumn("PID", value: \.id) { row in
-                    Text("\(row.id)").monospacedDigit().foregroundStyle(.secondary)
+                TableColumn("PID", value: \.pid) { row in
+                    Text(verbatim: String(row.pid)).monospacedDigit().foregroundStyle(.secondary)
                 }
                 .width(60)
                 TableColumn("사용자", value: \.user) { row in
@@ -94,20 +134,28 @@ struct TaskManagerView: View {
                 .width(70)
             }
             .contextMenu(forSelectionType: ProcessRow.ID.self) { ids in
-                if let id = ids.first, let row = monitor.rows.first(where: { $0.id == id }) {
+                if let row = findRow(ids.first) {
                     Button("종료") { end(row, force: false) }.disabled(row.isProtected)
                     Button("강제 종료") { confirmForce = row }.disabled(row.isProtected)
+                    if row.children != nil {
+                        Button(expanded.contains(row.id) ? "접기" : "펼쳐서 프로세스 보기") { toggle(row) }
+                    }
                     if let url = row.app?.bundleURL {
                         Divider()
                         Button("Finder에서 보기") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                     }
                 }
+            } primaryAction: { ids in
+                // 묶은 줄을 두 번 누르면 펼치거나 접는다.
+                if let row = findRow(ids.first), row.children != nil { toggle(row) }
             }
 
             Divider()
             HStack {
                 if let row = selectedRow {
-                    Text(row.isProtected ? "\(row.name) — 시스템이 멈출 수 있어 종료를 막아 두었어요" : row.name)
+                    Text(row.isProtected ? "\(row.name) — 시스템이 멈출 수 있어 종료를 막아 두었어요"
+                         : row.children != nil ? "\(row.name) — 종료하면 안의 프로세스 \(row.pids.count)개가 함께 끝나요"
+                         : row.depth > 0 ? "\(row.name) (PID \(row.pid)) — 이 프로세스만 끝내요" : row.name)
                         .foregroundStyle(row.isProtected ? .orange : .primary)
                         .lineLimit(1)
                 } else {

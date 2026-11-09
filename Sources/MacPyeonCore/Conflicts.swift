@@ -36,7 +36,7 @@ public enum Conflicts {
             + [Rule(appName: "AltTab", bundleID: altTabBundleID, domain: altTabBundleID, key: nil, feature: .windowSwitcher)]
     }()
 
-    /// ⌥Tab을 기본 단축키로 쓰는 창 전환 앱.
+    /// 창 전환 앱(⌘Tab·⌥Tab을 가로챈다). 실행 중이면 맥편해는 ⌘Tab을 양보한다.
     public static let altTabBundleID = "com.lwouis.alt-tab-macos"
 
     /// - Parameters:

@@ -189,14 +189,16 @@ struct NewShortcutTests {
         rules.keyDown(KeyInput(keyCode: code, modifiers: mods, isAutorepeat: repeatKey, frontmostBundleID: app), isTextFocused: { false })
     }
 
-    @Test func optionTabSwitchesWindowsEverywhere() {
+    @Test func commandTabSwitchesWindowsEverywhere() {
         let rules = KeyRules(enabled: [.windowSwitcher])
-        #expect(run(rules, KeyCode.tab, [.option], app: "com.google.Chrome") == .windowSwitcher(forward: true))
-        #expect(run(rules, KeyCode.tab, [.option, .shift]) == .windowSwitcher(forward: false))
-        #expect(run(rules, KeyCode.tab, [.option], repeatKey: true) == .windowSwitcher(forward: true))
-        #expect(run(rules, KeyCode.tab, [.command]) == .pass)
-        #expect(run(KeyRules(enabled: []), KeyCode.tab, [.option]) == .pass)
-        #expect(run(rules, KeyCode.tab, [.option], app: "com.apple.iWork.Numbers") == .pass)
+        #expect(run(rules, KeyCode.tab, [.command], app: "com.google.Chrome") == .windowSwitcher(forward: true))
+        #expect(run(rules, KeyCode.tab, [.command, .shift]) == .windowSwitcher(forward: false))
+        #expect(run(rules, KeyCode.tab, [.command], repeatKey: true) == .windowSwitcher(forward: true))
+        #expect(run(rules, KeyCode.tab, [.command], app: "com.apple.iWork.Numbers") == .windowSwitcher(forward: true))
+        // ⌥Tab, ⌃Tab은 앱이 쓰도록 그대로 둔다.
+        #expect(run(rules, KeyCode.tab, [.option]) == .pass)
+        #expect(run(rules, KeyCode.tab, [.control]) == .pass)
+        #expect(run(KeyRules(enabled: []), KeyCode.tab, [.command]) == .pass)
     }
 
     @Test func finderWindowsShortcutsOnlyInFinder() {

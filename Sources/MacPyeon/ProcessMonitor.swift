@@ -4,8 +4,11 @@ import IOKit
 import MacPyeonCore
 
 /// 작업 관리자 한 줄: 앱(도우미 프로세스 포함) 또는 프로세스 하나.
+/// 앱으로 묶은 줄은 펼치면 안의 프로세스(children)를 하나씩 보고 따로 끝낼 수 있다.
 struct ProcessRow: Identifiable, Equatable {
-    let id: Int32                 // 대표 pid
+    /// 묶음 줄과 그 안의 대표 프로세스 줄이 같은 pid라서, 표 안에서 겹치지 않게 따로 만든다.
+    let id: String
+    let pid: Int32                // 대표 pid
     let name: String
     let pids: [Int32]
     let app: NSRunningApplication?
@@ -15,12 +18,22 @@ struct ProcessRow: Identifiable, Equatable {
     let memory: UInt64            // 바이트
     let gpu: Double               // GPU 전체 = 1.0
     let isProtected: Bool
+    /// 묶음일 때 안의 프로세스들(2개 이상일 때만). 펼침 표시에 쓴다.
+    var children: [ProcessRow]? = nil
+    /// 0: 맨 위 줄, 1: 펼친 묶음 안의 프로세스
+    var depth = 0
 
     var isApp: Bool { app != nil }
     var helperCount: Int { pids.count - 1 }
 
     static func == (a: ProcessRow, b: ProcessRow) -> Bool {
-        a.id == b.id && a.cpu == b.cpu && a.memory == b.memory && a.gpu == b.gpu && a.pids == b.pids
+        a.id == b.id && a.cpu == b.cpu && a.memory == b.memory && a.gpu == b.gpu && a.pids == b.pids && a.children == b.children
+    }
+
+    /// 이 줄 또는 펼친 안쪽에서 id로 찾는다.
+    func find(_ id: String) -> ProcessRow? {
+        if self.id == id { return self }
+        return children?.lazy.compactMap { $0.find(id) }.first
     }
 }
 
@@ -164,10 +177,11 @@ final class ProcessMonitor: ObservableObject {
             return "\(uid)"
         }
 
-        func row(leader: Sample, members: [Sample], app: NSRunningApplication?) -> ProcessRow {
+        func row(leader: Sample, members: [Sample], app: NSRunningApplication?, id: String? = nil) -> ProcessRow {
             let name = app?.localizedName ?? PosixFS.lastComponent(leader.path)
             return ProcessRow(
-                id: leader.pid,
+                id: id ?? "p\(leader.pid)",
+                pid: leader.pid,
                 name: name,
                 pids: members.map(\.pid),
                 app: app,
@@ -197,7 +211,13 @@ final class ProcessMonitor: ObservableObject {
         for (bundle, members) in groups {
             guard let app = appByBundlePath[bundle] else { continue }
             let leader = members.first { $0.pid == app.processIdentifier } ?? members[0]
-            result.append(row(leader: leader, members: members, app: app))
+            var group = row(leader: leader, members: members, app: app, id: "g\(leader.pid)")
+            if members.count > 1 {
+                // 안쪽 줄은 프로세스 하나씩(앱 정보 없이 → 종료하면 그 프로세스만 끝난다). 본체를 맨 위에.
+                group.children = members
+                    .map { var r = row(leader: $0, members: [$0], app: nil); r.depth = 1; return r }
+            }
+            result.append(group)
         }
         result += singles.map { row(leader: $0, members: [$0], app: appByPID[$0.pid]) }
         rows = result

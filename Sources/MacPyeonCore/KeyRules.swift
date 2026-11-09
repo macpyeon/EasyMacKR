@@ -9,6 +9,8 @@ public enum KeyCode {
     public static let o: UInt16 = 31
     public static let n: UInt16 = 45
     public static let tab: UInt16 = 48
+    public static let grave: UInt16 = 50   // ` (Tab 위 키)
+    public static let h: UInt16 = 4
     public static let returnKey: UInt16 = 36
     public static let keypadEnter: UInt16 = 76
     public static let delete: UInt16 = 51          // Backspace (맥 키보드의 delete)
@@ -100,7 +102,7 @@ public enum KeyAction: Equatable, Sendable {
     /// ⌘Q: 짧은 시간 안에 두 번 눌렀는지 보고 종료 여부를 정한다.
     case quitGuard
     case tool(ToolAction)
-    /// ⌥Tab 창 전환: 처음 누르면 열고, 열려 있으면 다음(또는 이전) 창으로.
+    /// ⌘Tab 창 전환: 처음 누르면 열고, 열려 있으면 다음(또는 이전) 창으로.
     case windowSwitcher(forward: Bool)
     case finderCopyPath
     case openTerminalHere
@@ -161,11 +163,10 @@ public struct KeyRules: Sendable {
             return .switchToEnglishThenPass
         }
 
-        // ⌥Tab은 꾹 누르고 있으면 계속 넘어가야 해서 자동 반복도 받는다.
-        if enabled.contains(.windowSwitcher) && code == KeyCode.tab,
-           !Self.optionTabApps.contains(input.frontmostBundleID ?? "") {
-            if mods == [.option] { return .windowSwitcher(forward: true) }
-            if mods == [.option, .shift] { return .windowSwitcher(forward: false) }
+        // ⌘Tab은 꾹 누르고 있으면 계속 넘어가야 해서 자동 반복도 받는다.
+        if enabled.contains(.windowSwitcher) && code == KeyCode.tab {
+            if mods == [.command] { return .windowSwitcher(forward: true) }
+            if mods == [.command, .shift] { return .windowSwitcher(forward: false) }
         }
 
         if let action = globalShortcut(code: code, mods: mods, input: input) {
@@ -175,9 +176,6 @@ public struct KeyRules: Sendable {
         guard input.frontmostBundleID == Self.finderBundleID else { return .pass }
         return finderKeyDown(input, isTextFocused: isTextFocused)
     }
-
-    /// ⌥Tab을 자체 기능(표 칸 안에 탭 넣기)으로 쓰는 앱.
-    static let optionTabApps: Set<String> = ["com.apple.iWork.Numbers", "com.apple.iWork.Pages", "com.apple.iWork.Keynote"]
 
     private static let quitGuardExempt: Set<String> = [finderBundleID, "kr.macpyeon.MacPyeon"]
 
