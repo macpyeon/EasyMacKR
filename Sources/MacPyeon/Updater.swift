@@ -19,6 +19,8 @@ final class Updater: ObservableObject {
     @Published private(set) var justUpdated: AppVersion?
     @Published private(set) var checking = false
     @Published private(set) var lastResult: String?
+    /// 이번 실행이 지난 실행과 다른 버전인지(업데이트·재설치 직후).
+    private(set) var versionChangedThisLaunch = false
 
     @Published var autoCheck: Bool {
         didSet {
@@ -270,6 +272,7 @@ final class Updater: ObservableObject {
         let defaults = UserDefaults.standard
         let previous = defaults.string(forKey: Keys.lastRun).flatMap(AppVersion.init)
         defaults.set(current.description, forKey: Keys.lastRun)
+        versionChangedThisLaunch = previous.map { $0 != current } ?? Self.ranBefore
         if let previous, previous < current {
             defaults.set(current.description, forKey: Keys.pendingUpdated)
         } else if previous == nil, Self.ranBefore {

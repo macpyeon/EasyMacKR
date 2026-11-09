@@ -68,6 +68,7 @@ final class AppController {
         }
         store.markAllFeaturesKnown()
         store.launchAtLogin = SMAppService.mainApp.status == .enabled
+        resetStaleAccessibilityAfterUpdate()
         requestAccessibility(prompt: store.needsAccessibility)
         startWatchdog()
     }
@@ -254,6 +255,26 @@ final class AppController {
 
     /// 시스템 권한 요청 창은 실행할 때마다 한 번만 띄운다(설정 화면의 버튼은 시스템 설정을 직접 연다).
     private var didPrompt = false
+
+    /// 배포판은 버전마다 서명이 달라서, 업데이트하면 손쉬운 사용 목록의 예전 항목이 켜져 있어도 동작하지 않는다.
+    /// 업데이트 직후 권한이 없으면 그 항목을 지워, 바로 이어지는 권한 요청이 새 항목으로 뜨게 한다.
+    /// (brew 설치 단계는 샌드박스라 tccutil을 쓸 수 없어 앱이 직접 한다.)
+    private func resetStaleAccessibilityAfterUpdate() {
+        guard Updater.shared.versionChangedThisLaunch, store.needsAccessibility, !AXIsProcessTrusted(),
+              let bundleID = Bundle.main.bundleIdentifier else { return }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        p.arguments = ["reset", "Accessibility", bundleID]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        do {
+            try p.run()
+            p.waitUntilExit()
+            DebugLog.write("reset stale accessibility entry after update: status \(p.terminationStatus)")
+        } catch {
+            DebugLog.write("tccutil failed: \(error)")
+        }
+    }
 
     func requestAccessibility(prompt: Bool) {
         let showPrompt = prompt && !didPrompt
