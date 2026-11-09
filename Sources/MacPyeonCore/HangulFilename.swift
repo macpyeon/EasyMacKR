@@ -17,6 +17,45 @@ public enum Hangul {
         !name.unicodeScalars.elementsEqual(nfc(name).unicodeScalars)
     }
 
+    /// 풀려 있는 한글 자모(첫소리+가운뎃소리[+끝소리])만 완성형 글자로 합친다.
+    /// NFC 전체를 적용하면 호환 한자(樂 U+F914 등)나 Ω(U+2126) 같은 다른 글자까지 바뀌므로 쓰지 않는다.
+    public static func composeJamo(_ text: String) -> String {
+        guard hasConjoiningJamo(text) else { return text }
+        var out = String.UnicodeScalarView()
+        let scalars = Array(text.unicodeScalars)
+        var i = 0
+        while i < scalars.count {
+            let s = scalars[i].value
+            // 첫소리(ᄀ U+1100 ~ ᄒ U+1112) + 가운뎃소리(ᅡ U+1161 ~ ᅵ U+1175)
+            if (0x1100...0x1112).contains(s), i + 1 < scalars.count, (0x1161...0x1175).contains(scalars[i + 1].value) {
+                var syllable = 0xAC00 + ((s - 0x1100) * 21 + (scalars[i + 1].value - 0x1161)) * 28
+                i += 2
+                // 끝소리(ᆨ U+11A8 ~ ᇂ U+11C2)
+                if i < scalars.count, (0x11A8...0x11C2).contains(scalars[i].value) {
+                    syllable += scalars[i].value - 0x11A7
+                    i += 1
+                }
+                out.append(Unicode.Scalar(syllable)!)
+                continue
+            }
+            // 받침 없는 완성형 글자 + 끝소리
+            if (0xAC00...0xD7A3).contains(s), (s - 0xAC00) % 28 == 0, i + 1 < scalars.count,
+               (0x11A8...0x11C2).contains(scalars[i + 1].value) {
+                out.append(Unicode.Scalar(s + scalars[i + 1].value - 0x11A7)!)
+                i += 2
+                continue
+            }
+            out.append(scalars[i])
+            i += 1
+        }
+        return String(out)
+    }
+
+    /// 조합용 한글 자모(U+1100–U+11FF)가 들어 있는지.
+    public static func hasConjoiningJamo(_ text: String) -> Bool {
+        text.unicodeScalars.contains { (0x1100...0x11FF).contains($0.value) }
+    }
+
     /// 두 문자열이 바이트(스칼라) 단위로 같은지. `==`는 정규화를 무시하므로 쓰지 않는다.
     public static func sameScalars(_ a: String, _ b: String) -> Bool {
         a.unicodeScalars.elementsEqual(b.unicodeScalars)

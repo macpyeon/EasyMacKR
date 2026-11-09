@@ -61,6 +61,8 @@ final class FeatureStore: ObservableObject {
         static let statItems = "statItems"
         static let linesPerNotch = "linesPerNotch"
         static let useOwnTaskManager = "useOwnTaskManager"
+        static let knownFeatures = "knownFeatures"
+        static let terminalApp = "terminalApp"
     }
 
     init() {
@@ -77,6 +79,14 @@ final class FeatureStore: ObservableObject {
     var isFirstLaunch: Bool { !defaults.bool(forKey: Keys.didFirstLaunch) }
 
     func markLaunched() { defaults.set(true, forKey: Keys.didFirstLaunch) }
+
+    func newlyRecommendedFeatures() -> Set<FeatureID> {
+        FeatureCatalog.newlyRecommended(known: defaults.stringArray(forKey: Keys.knownFeatures).map(Set.init))
+    }
+
+    func markAllFeaturesKnown() {
+        defaults.set(FeatureID.allCases.map(\.rawValue).sorted(), forKey: Keys.knownFeatures)
+    }
 
     func isOn(_ id: FeatureID) -> Bool { enabled.contains(id) }
 

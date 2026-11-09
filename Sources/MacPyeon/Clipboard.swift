@@ -29,6 +29,8 @@ final class ClipboardHistory: ObservableObject {
     @Published private(set) var items: [ClipItem] = []
     var recordHistory = false
     var cleanURLs = false
+    /// 복사한 글의 자소 분리(NFD)를 합친다.
+    var composeHangul = false
 
     private var timer: Timer?
     private var lastChange = NSPasteboard.general.changeCount
@@ -52,12 +54,13 @@ final class ClipboardHistory: ObservableObject {
         }
     }
 
-    func update(record: Bool, clean: Bool) {
+    func update(record: Bool, clean: Bool, nfc: Bool) {
         // 기록을 끄면 저장된 기록도 지운다(개인정보).
         if recordHistory && !record { clear(keepPinned: false) }
         recordHistory = record
         cleanURLs = clean
-        let wanted = record || clean
+        composeHangul = nfc
+        let wanted = record || clean || nfc
         if wanted && timer == nil {
             lastChange = NSPasteboard.general.changeCount
             let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.poll() }
@@ -76,6 +79,7 @@ final class ClipboardHistory: ObservableObject {
         if ignoreChange == pb.changeCount { return }
         let types = Set((pb.types ?? []).map(\.rawValue))
         guard types.isDisjoint(with: Self.skipTypes) else { return }
+        if composeHangul { composeHangulText(pb) }
 
         if var text = pb.string(forType: .string), !text.isEmpty {
             if cleanURLs, let cleaned = URLCleaner.clean(text) {
@@ -93,6 +97,49 @@ final class ClipboardHistory: ObservableObject {
                 DispatchQueue.main.async { self?.add(ClipItem(image: png)) }
             }
         }
+    }
+
+    private static let textTypes: Set<String> = [
+        NSPasteboard.PasteboardType.string.rawValue, "public.utf16-plain-text", "public.utf16-external-plain-text",
+        "NSStringPboardType",
+    ]
+
+    /// 원본 앱이 나중에 넘겨주는(약속) 내용. 다시 쓰면 붙여넣기가 깨질 수 있어 건드리지 않는다.
+    private static let promiseTypes: Set<String> = [
+        "com.apple.pasteboard.promised-file-url", "com.apple.NSFilePromiseItemMetaData",
+        "com.apple.pasteboard.promised-file-content-type", "NSPromiseContentsPboardType",
+    ]
+
+    /// 클립보드를 다시 썼을 때(변경 번호: 이전 → 이후). 잘라내기 대기 상태가 이걸 보고 이어진다.
+    var onRewrite: ((Int, Int) -> Void)?
+
+    /// 글자 안에 자소가 나뉜 한글이 있으면 그 한글만 합친다. 파일·서식 같은 다른 내용은 그대로 두고 글자만 바꾼다.
+    private func composeHangulText(_ pb: NSPasteboard) {
+        guard let text = pb.string(forType: .string), Hangul.hasConjoiningJamo(text) else { return }
+        guard let items = pb.pasteboardItems, !items.isEmpty, items.count <= 200 else { return }
+        let allTypes = Set(items.flatMap { $0.types.map(\.rawValue) })
+        guard allTypes.isDisjoint(with: Self.promiseTypes) else { return }
+        var copies: [NSPasteboardItem] = []
+        var total = 0
+        for item in items {
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if Self.textTypes.contains(type.rawValue), let s = item.string(forType: type) {
+                    copy.setString(Hangul.composeJamo(s), forType: type)
+                } else if let data = item.data(forType: type) {
+                    total += data.count
+                    // 아주 큰 내용(이미지 등)은 다시 쓰지 않는다.
+                    if total > 20_000_000 { return }
+                    copy.setData(data, forType: type)
+                }
+            }
+            copies.append(copy)
+        }
+        let before = pb.changeCount
+        pb.clearContents()
+        pb.writeObjects(copies)
+        lastChange = pb.changeCount
+        onRewrite?(before, pb.changeCount)
     }
 
     private func add(_ item: ClipItem) {

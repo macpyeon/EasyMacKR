@@ -154,7 +154,7 @@ private struct GeneralPage: View {
         }
 
         Section("맥편해") {
-            LabeledContent("켜진 기능", value: "\(store.enabled.count) / \(FeatureCatalog.all.count)개")
+            LabeledContent("켜진 기능", value: "\(store.enabled.count) / \(FeatureCatalog.availableCount)개")
             Toggle("로그인할 때 자동으로 실행", isOn: Binding(
                 get: { store.launchAtLogin },
                 set: { store.setLaunchAtLogin($0) }))
@@ -169,6 +169,7 @@ private struct GeneralPage: View {
             }
             HStack {
                 Button("윈도우용으로 압축…") { FileActions.chooseAndZip(encoding: store.zipEncoding) }
+                Button("윈도우 zip 풀기…") { FileActions.chooseAndUnzip() }
                 Button("한글 파일명 정리…") { FileActions.chooseAndNormalize() }
             }
         } header: {
@@ -272,6 +273,12 @@ private struct FeatureRow: View {
                 Button("다른 폴더도 직접 정리…") { FileActions.chooseAndNormalize() }
                     .controlSize(.small)
             }
+            if info.id == .finderWindowsShortcuts && store.isOn(.finderWindowsShortcuts) {
+                TerminalPicker()
+            }
+            if info.id == .perAppInputSource && store.isOn(.perAppInputSource) {
+                PerAppInputSourceRow()
+            }
         }
         .padding(.vertical, 2)
     }
@@ -322,5 +329,36 @@ private struct UpdateSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+private struct TerminalPicker: View {
+    @AppStorage(TerminalApp.defaultsKey) private var choice = TerminalApp.terminal.bundleID
+    private let apps = TerminalApp.installed
+
+    var body: some View {
+        if apps.count > 1 {
+            Picker("터미널 앱", selection: $choice) {
+                ForEach(apps) { Text($0.name).tag($0.bundleID) }
+            }
+            .frame(maxWidth: 260)
+        }
+    }
+}
+
+private struct PerAppInputSourceRow: View {
+    @State private var count = PerAppInputSource.rememberedCount
+
+    var body: some View {
+        HStack {
+            Text("기억한 앱 \(count)개").font(.caption).foregroundStyle(.secondary)
+            Button("모두 잊기") {
+                PerAppInputSource.forgetAll()
+                count = 0
+            }
+            .controlSize(.small)
+            .disabled(count == 0)
+        }
+        .onAppear { count = PerAppInputSource.rememberedCount }
     }
 }

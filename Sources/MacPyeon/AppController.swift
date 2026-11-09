@@ -25,6 +25,7 @@ final class AppController {
         router.onNewTextFile = { FileActions.createNewTextFile() }
         router.onClipboardHistory = { ClipboardPanel.shared.toggle() }
         router.onTaskManager = { [store] in store.openTaskManager() }
+        ClipboardHistory.shared.onRewrite = { [router] old, new in router.clipboardRewritten(from: old, to: new) }
         CleaningMode.shared.onChange = { [weak self] on in
             guard let self else { return }
             self.router.lockKeyboard = on
@@ -37,7 +38,11 @@ final class AppController {
         InputSourceSwitcher.remember()
         DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String),
-            object: nil, queue: .main) { _ in InputSourceSwitcher.remember() }
+            object: nil, queue: .main) { _ in
+                InputSourceSwitcher.remember()
+                PerAppInputSource.sourceChanged()
+                InputSourceIndicator.sourceChanged()
+            }
 
         if store.isFirstLaunch {
             store.markLaunched()
@@ -47,7 +52,21 @@ final class AppController {
             setLaunchAtLogin(true)
         } else {
             featuresChanged(from: [], to: store.enabled, initial: true)
+            // 이 macOS에서 필요 없는 기능이 켜져 있으면 끈다(예: 시스템이 이미 하는 한/영 표시).
+            let unavailable = store.enabled.intersection(FeatureCatalog.unavailableHere)
+            if !unavailable.isEmpty { store.replace(with: store.enabled.subtracting(unavailable)) }
+            // 업데이트로 새로 생긴 추천 기능은 한 번 켜 준다(사용자가 이미 본 기능은 건드리지 않음).
+            var added = store.newlyRecommendedFeatures().subtracting(store.enabled)
+            // AltTab을 쓰는 사람에게는 ⌥Tab을 가로채지 않는다.
+            if NSWorkspace.shared.urlForApplication(withBundleIdentifier: Conflicts.altTabBundleID) != nil {
+                added.remove(.windowSwitcher)
+            }
+            if !added.isEmpty {
+                DebugLog.write("new recommended features enabled: \(added.map(\.rawValue).sorted())")
+                store.replace(with: store.enabled.union(added))
+            }
         }
+        store.markAllFeaturesKnown()
         store.launchAtLogin = SMAppService.mainApp.status == .enabled
         requestAccessibility(prompt: store.needsAccessibility)
         startWatchdog()
@@ -100,7 +119,10 @@ final class AppController {
         checkConflicts()
         readout.set(new.contains(.menuBarStats))
         alerts.set(new.contains(.systemAlerts))
-        ClipboardHistory.shared.update(record: new.contains(.clipboardHistory), clean: new.contains(.cleanURLs))
+        ClipboardHistory.shared.update(record: new.contains(.clipboardHistory), clean: new.contains(.cleanURLs),
+                                       nfc: new.contains(.clipboardNFC))
+        InputSourceIndicator.enabled = new.contains(.inputSourceIndicator)
+        PerAppInputSource.set(new.contains(.perAppInputSource))
 
         syncRouter()
         if !initial && store.needsAccessibility && !store.accessibilityGranted {

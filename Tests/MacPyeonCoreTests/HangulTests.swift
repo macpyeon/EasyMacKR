@@ -78,3 +78,19 @@ let nfcName = "한글 문서.txt".precomposedStringWithCanonicalMapping
         #expect(PosixFS.join("/a/", "b") == "/a/b")
     }
 }
+
+
+struct JamoComposeTests {
+    @Test func composesOnlyHangulJamo() {
+        let nfd = "한글 파일.txt".decomposedStringWithCanonicalMapping
+        #expect(Hangul.hasConjoiningJamo(nfd))
+        #expect(Hangul.sameScalars(Hangul.composeJamo(nfd), "한글 파일.txt"))
+        // 호환 한자·옴 기호·이미 완성된 글자는 그대로
+        let others = "\u{F914}\u{2126} 완성"
+        #expect(Hangul.sameScalars(Hangul.composeJamo(others), others))
+        #expect(!Hangul.hasConjoiningJamo(others))
+        // 섞여 있어도 한글 자모만
+        let mixed = "\u{F914}" + "값".decomposedStringWithCanonicalMapping
+        #expect(Hangul.sameScalars(Hangul.composeJamo(mixed), "\u{F914}값"))
+    }
+}

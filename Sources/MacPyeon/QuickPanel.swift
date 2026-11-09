@@ -158,7 +158,7 @@ private struct PanelContainer<Content: View>: View {
 }
 
 enum PanelTab: String, CaseIterable, Identifiable {
-    case dashboard, display, sound, battery, network, disk, awake, tools, toggles
+    case dashboard, display, sound, battery, network, disk, calendar, awake, tools, toggles
     var id: String { rawValue }
 
     var symbol: String {
@@ -170,6 +170,7 @@ enum PanelTab: String, CaseIterable, Identifiable {
         case .network: return "network"
         case .disk: return "internaldrive"
         case .battery: return "battery.75percent"
+        case .calendar: return "calendar"
         case .tools: return "wrench.and.screwdriver"
         case .toggles: return "switch.2"
         }
@@ -184,6 +185,7 @@ enum PanelTab: String, CaseIterable, Identifiable {
         case .network: return "네트워크"
         case .disk: return "디스크"
         case .battery: return "배터리"
+        case .calendar: return "달력"
         case .tools: return "도구"
         case .toggles: return "빠른 설정"
         }
@@ -212,6 +214,7 @@ struct QuickPanelView: View {
                 case .network: NetworkTab()
                 case .disk: DiskTab()
                 case .battery: BatteryTab()
+                case .calendar: CalendarTab()
                 case .tools: ToolsTab(store: store, close: close)
                 case .toggles: TogglesTab(store: store)
                 }
@@ -259,7 +262,7 @@ struct QuickPanelView: View {
                 } label: {
                     Image(systemName: t.symbol)
                         .font(.system(size: 15))
-                        .frame(width: 36, height: 30)
+                        .frame(width: 32, height: 30)
                         .foregroundStyle(t == tab ? Color.accentColor : .primary)
                         .background(t == tab ? Color.accentColor.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 8))
                         .contentShape(Rectangle())
@@ -709,25 +712,208 @@ private struct BatteryTab: View {
     @ObservedObject private var m = SystemMonitor.shared
 
     var body: some View {
-        Card {
-            if let b = m.battery {
-                HStack {
-                    Image(systemName: b.isCharging ? "battery.100.bolt" : "battery.75percent")
-                    Text(Format.percent(b.percent)).font(.title2.weight(.semibold)).monospacedDigit()
-                    Spacer()
-                    Text(b.isCharging ? "충전 중" : b.onAC ? "전원 연결됨" : "배터리 사용 중").foregroundStyle(.secondary)
+        VStack(spacing: 10) {
+            Card {
+                if let b = m.battery {
+                    HStack {
+                        Image(systemName: b.isCharging ? "battery.100.bolt" : "battery.75percent")
+                        Text(Format.percent(b.percent)).font(.title2.weight(.semibold)).monospacedDigit()
+                        Spacer()
+                        Text(b.isCharging ? "충전 중" : b.onAC ? "전원 연결됨" : "배터리 사용 중").foregroundStyle(.secondary)
+                    }
+                    ProgressView(value: b.percent).tint(b.percent < 0.2 ? .red : .green)
+                    if let min = b.minutesRemaining { Stat(title: b.isCharging ? "완충까지" : "남은 시간", value: Format.duration(minutes: min)) }
+                    if let health = b.health { Stat(title: "배터리 성능(최대 용량)", value: Format.percent(health)) }
+                    if let cycles = b.cycleCount { Stat(title: "충전 횟수", value: "\(cycles)회") }
+                    if let t = b.temperature { Stat(title: "온도", value: String(format: "%.1f°C", t)) }
+                    if let w = b.watts, abs(w) > 0.05 { Stat(title: w > 0 ? "충전 전력" : "소비 전력", value: String(format: "%.1fW", abs(w))) }
+                    if let a = b.adapterWatts { Stat(title: "전원 어댑터", value: "\(a)W") }
+                } else {
+                    Text("배터리가 없는 Mac이에요").foregroundStyle(.secondary)
                 }
-                ProgressView(value: b.percent).tint(b.percent < 0.2 ? .red : .green)
-                if let min = b.minutesRemaining { Stat(title: b.isCharging ? "완충까지" : "남은 시간", value: Format.duration(minutes: min)) }
-                if let health = b.health { Stat(title: "배터리 성능(최대 용량)", value: Format.percent(health)) }
-                if let cycles = b.cycleCount { Stat(title: "충전 횟수", value: "\(cycles)회") }
-                if let t = b.temperature { Stat(title: "온도", value: String(format: "%.1f°C", t)) }
-                if let w = b.watts, abs(w) > 0.05 { Stat(title: w > 0 ? "충전 전력" : "소비 전력", value: String(format: "%.1fW", abs(w))) }
-                if let a = b.adapterWatts { Stat(title: "전원 어댑터", value: "\(a)W") }
-            } else {
-                Text("배터리가 없는 Mac이에요").foregroundStyle(.secondary)
+            }
+            BluetoothBatteryCard()
+        }
+    }
+}
+
+private struct BluetoothBatteryCard: View {
+    @ObservedObject private var bt = BluetoothBatteryMonitor.shared
+
+    var body: some View {
+        Card {
+            HStack {
+                Text("블루투스 기기").font(.callout.weight(.semibold))
+                Spacer()
+                if bt.loading { ProgressView().controlSize(.small) }
+            }
+            if bt.devices.isEmpty && !bt.loading {
+                Text("연결된 블루투스 기기가 없어요").font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(bt.devices) { d in
+                HStack(spacing: 8) {
+                    Image(systemName: d.symbol).frame(width: 20).foregroundStyle(.secondary)
+                    Text(d.name).lineLimit(1)
+                    Spacer()
+                    if d.left != nil || d.right != nil || d.caseLevel != nil {
+                        HStack(spacing: 8) {
+                            if let l = d.left { level("왼", l) }
+                            if let r = d.right { level("오", r) }
+                            if let c = d.caseLevel { level("케이스", c) }
+                        }
+                    } else if let m = d.main {
+                        level(nil, m)
+                    } else {
+                        Text("—").foregroundStyle(.tertiary).help("이 기기는 배터리 정보를 알려 주지 않아요")
+                    }
+                }
+                .font(.callout)
+            }
+            if !bt.bleEnabled && bt.devices.contains(where: { !$0.hasLevel }) {
+                Button("다른 회사 키보드·마우스 배터리도 보기") { bt.enableBLE() }
+                    .buttonStyle(.link).font(.caption)
+                    .help("블루투스 권한을 물어봐요. 저전력 블루투스 배터리 정보를 주는 기기만 보여요.")
+            }
+            if let state = bt.bleState {
+                Text(state).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
         }
+        .onAppear { bt.use("panel", true) }
+        .onDisappear { bt.use("panel", false) }
+    }
+
+    private func level(_ label: String?, _ value: Int) -> some View {
+        HStack(spacing: 3) {
+            if let label { Text(label).font(.caption2).foregroundStyle(.secondary) }
+            Text("\(value)%").monospacedDigit().foregroundStyle(value <= 15 ? .red : .primary)
+        }
+    }
+}
+
+private struct CalendarTab: View {
+    @State private var shown = CalendarTab.startOfMonth(
+        ProcessInfo.processInfo.environment["MACPYEON_RENDER_MONTH"].flatMap { ISO8601DateFormatter().date(from: $0 + "-01T12:00:00Z") } ?? Date())
+    private let cal = KoreanCalendarView.calendar
+
+    static func startOfMonth(_ date: Date) -> Date {
+        let c = KoreanCalendarView.calendar
+        return c.date(from: c.dateComponents([.year, .month], from: date))!
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Card {
+                KoreanCalendarView(month: $shown)
+            }
+            let comps = cal.dateComponents([.year, .month], from: shown)
+            let list = KoreanCalendar.holidays(year: comps.year!, month: comps.month!)
+            Card {
+                if list.isEmpty {
+                    Text("이번 달은 공휴일이 없어요").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(list, id: \.self) { h in
+                        HStack {
+                            Text("\(h.month)월 \(h.day)일 (\(KoreanCalendarView.weekdayName(h)))").monospacedDigit()
+                            Spacer()
+                            Text(h.name).foregroundStyle(.red)
+                        }
+                        .font(.callout)
+                    }
+                }
+                Text("선거일·임시공휴일은 정부 발표 뒤에만 알 수 있어 빠져 있어요.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+struct KoreanCalendarView: View {
+    @Binding var month: Date
+    @State private var now = Date()
+    private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+
+    static var calendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.locale = Locale(identifier: "ko_KR")
+        c.firstWeekday = 1
+        return c
+    }
+    private var cal: Calendar { Self.calendar }
+
+    static func weekdayName(_ h: KoreanCalendar.Holiday) -> String {
+        let c = calendar
+        guard let d = c.date(from: DateComponents(year: h.year, month: h.month, day: h.day)) else { return "" }
+        return ["일", "월", "화", "수", "목", "금", "토"][c.component(.weekday, from: d) - 1]
+    }
+
+    var body: some View {
+        let comps = cal.dateComponents([.year, .month], from: month)
+        let year = comps.year!, m = comps.month!
+        let days = cal.range(of: .day, in: .month, for: month)!.count
+        let lead = cal.component(.weekday, from: month) - 1
+        let today = cal.dateComponents([.year, .month, .day], from: now)
+        let todayLunar = KoreanCalendar.lunarDate(year: today.year!, month: today.month!, day: today.day!)
+
+        VStack(spacing: 8) {
+            HStack {
+                Button { shift(-1) } label: { Image(systemName: "chevron.left") }.buttonStyle(.plain)
+                Spacer()
+                VStack(spacing: 1) {
+                    Text("\(String(year))년 \(m)월").font(.headline)
+                    if let l = todayLunar {
+                        Text("오늘 음력 \(l.text)").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                .onTapGesture { month = CalendarTab.startOfMonth(now) }
+                .help("눌러서 이번 달로")
+                Spacer()
+                Button { shift(1) } label: { Image(systemName: "chevron.right") }.buttonStyle(.plain)
+            }
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 7)
+            LazyVGrid(columns: columns, spacing: 4) {
+                // 머리글·빈칸·날짜의 식별자가 겹치면 SwiftUI가 칸을 빼먹으므로 문자열로 나눈다.
+                ForEach(Array(["일", "월", "화", "수", "목", "금", "토"].enumerated()), id: \.element) { i, w in
+                    Text(w).font(.caption2.weight(.semibold))
+                        .foregroundStyle(i == 0 ? .red : i == 6 ? .blue : .secondary)
+                }
+                ForEach((0..<lead).map { "blank\($0)" }, id: \.self) { _ in Color.clear.frame(height: 34) }
+                ForEach(Array(1...days), id: \.self) { day in
+                    dayCell(year: year, month: m, day: day, weekday: (lead + day - 1) % 7,
+                            isToday: today.year == year && today.month == m && today.day == day)
+                }
+            }
+        }
+        .onReceive(timer) { now = $0 }
+    }
+
+    private func dayCell(year: Int, month: Int, day: Int, weekday: Int, isToday: Bool) -> some View {
+        let holidays = KoreanCalendar.holiday(year: year, month: month, day: day)
+        let lunar = KoreanCalendar.lunarDate(year: year, month: month, day: day)
+        let red = weekday == 0 || !holidays.isEmpty
+        // 음력은 1일·15일과 공휴일만 작게 적는다(나머지는 너무 빽빽해짐).
+        let lunarText: String? = {
+            guard let lunar else { return nil }
+            if lunar.day == 1 { return "\(lunar.isLeap ? "윤" : "")\(lunar.month).1" }
+            if lunar.day == 15 { return "\(lunar.month).15" }
+            return nil
+        }()
+        return VStack(spacing: 0) {
+            Text("\(day)")
+                .font(.callout.weight(isToday ? .bold : .regular)).monospacedDigit()
+                .foregroundStyle(isToday ? Color.white : red ? Color.red : weekday == 6 ? Color.blue : Color.primary)
+                .frame(width: 26, height: 22)
+                .background(isToday ? Color.accentColor : .clear, in: Circle())
+            Text(holidays.first.map { $0.substitute ? "대체" : String($0.name.prefix(3)) } ?? lunarText ?? " ")
+                .font(.system(size: 8))
+                .foregroundStyle(holidays.isEmpty ? Color.secondary : Color.red)
+                .lineLimit(1)
+        }
+        .frame(height: 34)
+        .help(holidays.map(\.name).joined(separator: ", ") + (lunar.map { (holidays.isEmpty ? "" : " · ") + "음력 \($0.text)" } ?? ""))
+    }
+
+    private func shift(_ months: Int) {
+        if let d = cal.date(byAdding: .month, value: months, to: month) { month = d }
     }
 }
 
@@ -743,6 +929,7 @@ private struct ToolsTab: View {
             ("새 텍스트 문서", "doc.badge.plus", { FileActions.createNewTextFile() }),
             ("한글 파일명 정리", "character.textbox", { FileActions.chooseAndNormalize() }),
             ("윈도우용 압축", "doc.zipper", { FileActions.chooseAndZip(encoding: store.zipEncoding) }),
+            ("zip 풀기 (한글)", "archivebox", { FileActions.chooseAndUnzip() }),
             ("화면 잠금", "lock", { QuickTools.lockScreen() }),
             ("청소 모드", "sparkles", { CleaningMode.shared.start() }),
             ("휴지통 비우기", "trash", { QuickTools.emptyTrash() }),

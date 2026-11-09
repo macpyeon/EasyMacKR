@@ -183,3 +183,45 @@ private func down(_ code: UInt16, _ mods: Modifiers = [], app: String? = finder,
                                                isTextFocused: { false }) == .pass)
     }
 }
+
+struct NewShortcutTests {
+    private func run(_ rules: KeyRules, _ code: UInt16, _ mods: Modifiers, app: String = "com.apple.finder", repeatKey: Bool = false) -> KeyAction {
+        rules.keyDown(KeyInput(keyCode: code, modifiers: mods, isAutorepeat: repeatKey, frontmostBundleID: app), isTextFocused: { false })
+    }
+
+    @Test func optionTabSwitchesWindowsEverywhere() {
+        let rules = KeyRules(enabled: [.windowSwitcher])
+        #expect(run(rules, KeyCode.tab, [.option], app: "com.google.Chrome") == .windowSwitcher(forward: true))
+        #expect(run(rules, KeyCode.tab, [.option, .shift]) == .windowSwitcher(forward: false))
+        #expect(run(rules, KeyCode.tab, [.option], repeatKey: true) == .windowSwitcher(forward: true))
+        #expect(run(rules, KeyCode.tab, [.command]) == .pass)
+        #expect(run(KeyRules(enabled: []), KeyCode.tab, [.option]) == .pass)
+        #expect(run(rules, KeyCode.tab, [.option], app: "com.apple.iWork.Numbers") == .pass)
+    }
+
+    @Test func finderWindowsShortcutsOnlyInFinder() {
+        let rules = KeyRules(enabled: [.finderWindowsShortcuts])
+        #expect(run(rules, KeyCode.n, [.control, .shift]) == .post(key: KeyCode.n, modifiers: [.command, .shift]))
+        #expect(run(rules, KeyCode.c, [.control, .shift]) == .finderCopyPath)
+        #expect(run(rules, KeyCode.t, [.control, .shift]) == .openTerminalHere)
+        #expect(run(rules, KeyCode.c, [.control, .shift], app: "com.apple.Terminal") == .pass)
+    }
+
+    @Test func newFeaturesTurnOnOnceForExistingUsers() {
+        // 기록이 없던 0.1.x 사용자: 새 추천 기능만
+        let fresh = FeatureCatalog.newlyRecommended(known: nil)
+        let expected: Set<FeatureID> = [.clipboardNFC, .inputSourceIndicator, .windowSwitcher, .finderWindowsShortcuts]
+        #expect(fresh == expected.subtracting(FeatureCatalog.unavailableHere))
+        // 이미 본 기능은 다시 켜지 않는다(사용자가 끈 것 존중)
+        let all = Set(FeatureID.allCases.map(\.rawValue))
+        #expect(FeatureCatalog.newlyRecommended(known: all).isEmpty)
+    }
+}
+
+
+struct AvailabilityTests {
+    @Test func indicatorOnlyBeforeSonoma() {
+        #expect(FeatureCatalog.unavailable(onMacOS: 13).isEmpty)
+        #expect(FeatureCatalog.unavailable(onMacOS: 14) == [.inputSourceIndicator])
+    }
+}

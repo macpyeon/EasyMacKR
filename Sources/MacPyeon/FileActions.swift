@@ -140,6 +140,89 @@ enum FileActions {
         zipForWindows(panel.urls.map(\.path), encoding: encoding)
     }
 
+    // MARK: 윈도우 zip 풀기
+
+    static func unzip(_ paths: [String]) {
+        let zips = paths.filter { $0.lowercased().hasSuffix(".zip") }
+        guard !zips.isEmpty else {
+            if !paths.isEmpty { DispatchQueue.main.async { showError("zip 파일만 풀 수 있어요.", detail: "") } }
+            return
+        }
+        queue.async {
+            var folders: [URL] = []
+            var failures: [String] = []
+            for zip in zips {
+                do {
+                    let result = try ZipExtract.extract(zip)
+                    folders.append(URL(fileURLWithPath: result.folder))
+                } catch {
+                    failures.append("\(PosixFS.lastComponent(zip)): \(error)")
+                }
+            }
+            DispatchQueue.main.async {
+                if !folders.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(folders) }
+                if !failures.isEmpty { showError("풀지 못한 파일이 있어요.", detail: failures.joined(separator: "\n")) }
+            }
+        }
+    }
+
+    static func chooseAndUnzip() {
+        let panel = NSOpenPanel()
+        panel.title = "한글 깨짐 없이 풀 zip 선택"
+        panel.prompt = "풀기"
+        panel.message = "윈도우에서 만든 zip의 한글 파일명을 바르게 읽어서 같은 위치에 풉니다."
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.zip]
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK else { return }
+        unzip(panel.urls.map(\.path))
+    }
+
+    // MARK: 경로 복사·터미널
+
+    static func copyPaths(_ paths: [String]) {
+        guard !paths.isEmpty else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(paths.map(Hangul.nfc).joined(separator: "\n"), forType: .string)
+        HUD.show(paths.count > 1 ? "경로 \(paths.count)개를 복사했어요" : "경로를 복사했어요", symbol: "doc.on.doc")
+    }
+
+    /// 폴더면 그 폴더, 파일이면 들어 있는 폴더에서 터미널을 연다.
+    static func openTerminal(at path: String) {
+        let folder = PosixFS.type(of: path) == .directory && !NSWorkspace.shared.isFilePackage(atPath: path)
+            ? path : PosixFS.parent(path)
+        let app = TerminalApp.preferred
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID)
+            ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: TerminalApp.terminal.bundleID) else { return }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.open([URL(fileURLWithPath: folder, isDirectory: true)], withApplicationAt: appURL,
+                                configuration: config) { _, error in
+            if let error { DispatchQueue.main.async { showError("터미널을 열지 못했어요.", detail: error.localizedDescription) } }
+        }
+    }
+
+    /// Finder에서 고른 폴더(하나) 또는 지금 보고 있는 폴더에서 터미널을 연다.
+    static func openTerminalAtFinderLocation() {
+        queue.async {
+            let selected = runAppleScript("""
+            tell application "Finder"
+                try
+                    set s to selection as alias list
+                    if (count of s) is 1 then return POSIX path of (item 1 of s)
+                end try
+                return ""
+            end tell
+            """)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            var path = (selected?.isEmpty == false ? selected : nil) ?? finderFrontFolder() ?? desktopPath()
+            if path.count > 1, path.hasSuffix("/") { path.removeLast() }
+            DispatchQueue.main.async { openTerminal(at: path) }
+        }
+    }
+
     // MARK: 알림
 
     static func showInfo(_ message: String, detail: String) {
@@ -175,5 +258,45 @@ final class ServiceProvider: NSObject {
 
     @objc func normalizeHangulNames(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
         FileActions.normalizeNames(paths(from: pboard))
+    }
+
+    @objc func unzipWindows(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        FileActions.unzip(paths(from: pboard))
+    }
+
+    @objc func copyPath(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        let list = paths(from: pboard)
+        DispatchQueue.main.async { FileActions.copyPaths(list) }
+    }
+
+    @objc func openTerminalHere(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        guard let first = paths(from: pboard).first else { return }
+        DispatchQueue.main.async { FileActions.openTerminal(at: first) }
+    }
+}
+
+/// '여기서 터미널 열기'에 쓸 앱.
+struct TerminalApp: Identifiable, Hashable {
+    let bundleID: String
+    let name: String
+    var id: String { bundleID }
+
+    static let terminal = TerminalApp(bundleID: "com.apple.Terminal", name: "터미널")
+    static let known: [TerminalApp] = [
+        terminal,
+        TerminalApp(bundleID: "com.googlecode.iterm2", name: "iTerm2"),
+        TerminalApp(bundleID: "com.mitchellh.ghostty", name: "Ghostty"),
+        TerminalApp(bundleID: "dev.warp.Warp-Stable", name: "Warp"),
+    ]   // 폴더를 넘기면 그 위치에서 여는 앱만(kitty·Alacritty 등은 홈에서 열림)
+
+    static var installed: [TerminalApp] {
+        known.filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleID) != nil }
+    }
+
+    static let defaultsKey = "terminalApp"
+
+    static var preferred: TerminalApp {
+        let id = UserDefaults.standard.string(forKey: defaultsKey)
+        return installed.first { $0.bundleID == id } ?? terminal
     }
 }

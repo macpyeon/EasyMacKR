@@ -169,6 +169,11 @@ final class KeyRouter {
             return mediaKey(event) ? nil : pass
         }
 
+        // 창 전환 목록이 떠 있는 동안은 키를 목록 조작에 쓴다.
+        if WindowSwitcher.shared.isActive {
+            if let handled = switcherEvent(type: type, event: event) { return handled ? nil : pass }
+        }
+
         switch type {
         case .keyDown:
             tapDetector.interrupt()
@@ -201,6 +206,45 @@ final class KeyRouter {
             return pass
         default:
             return pass
+        }
+    }
+
+    /// 창 전환 중의 이벤트. nil이면 평소대로 처리, true면 삼킨다.
+    private func switcherEvent(type: CGEventType, event: CGEvent) -> Bool? {
+        let switcher = WindowSwitcher.shared
+        switch type {
+        case .flagsChanged:
+            // ⌥를 떼면 고른 창으로 간다.
+            if event.flags.rawValue & RawFlag.option == 0 {
+                DispatchQueue.main.async { switcher.commit() }
+            }
+            return false
+        case .keyDown:
+            let code = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+            let shift = event.flags.rawValue & RawFlag.shift != 0
+            switch code {
+            case KeyCode.tab:
+                DispatchQueue.main.async { switcher.step(shift ? -1 : 1) }
+            case KeyCode.leftArrow, KeyCode.upArrow:
+                DispatchQueue.main.async { switcher.step(-1) }
+            case KeyCode.rightArrow, KeyCode.downArrow:
+                DispatchQueue.main.async { switcher.step(1) }
+            case KeyCode.escape:
+                DispatchQueue.main.async { switcher.cancel() }
+            case KeyCode.returnKey, KeyCode.keypadEnter, KeyCode.space:
+                DispatchQueue.main.async { switcher.commit() }
+            default:
+                break
+            }
+            return true
+        case .keyUp:
+            return true
+        case .leftMouseDown, .rightMouseDown:
+            // 목록 밖을 누르면 닫는다. 목록 안 클릭은 패널이 처리한다.
+            DispatchQueue.main.async { switcher.cancelIfClickOutside() }
+            return nil
+        default:
+            return nil
         }
     }
 
@@ -275,6 +319,22 @@ final class KeyRouter {
                 DispatchQueue.main.async { HUD.show("⌘Q를 한 번 더 누르면 \(name) 종료", symbol: "power") }
             }
             return true
+        case .windowSwitcher(let forward):
+            DispatchQueue.main.async { WindowSwitcher.shared.open(forward: forward) }
+            return true
+        case .finderCopyPath:
+            // Finder 자체의 '경로 이름 복사'(⌥⌘C)를 부른다.
+            KeySender.post(key: KeyCode.c, modifiers: [.command, .option])
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                if let path = NSPasteboard.general.string(forType: .string), path.hasPrefix("/") {
+                    let lines = path.split(separator: "\n").count
+                    HUD.show(lines > 1 ? "경로 \(lines)개를 복사했어요" : "경로를 복사했어요", symbol: "doc.on.doc")
+                }
+            }
+            return true
+        case .openTerminalHere:
+            FileActions.openTerminalAtFinderLocation()
+            return true
         case .tool(let tool):
             DispatchQueue.main.async {
                 switch tool {
@@ -304,6 +364,12 @@ final class KeyRouter {
         default:
             return false
         }
+    }
+
+    /// 맥편해가 클립보드를 다시 썼으면(자소 합치기) 잘라내기 대기를 그 번호로 이어 간다.
+    func clipboardRewritten(from old: Int, to new: Int) {
+        guard cutPending else { return }
+        if cutChangeCountAfter == old { cutChangeCountAfter = new }
     }
 
     private func isCutStillValid() -> Bool {

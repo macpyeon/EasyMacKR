@@ -63,6 +63,12 @@ import Testing
         #expect(found == [FeatureConflict(appName: "Vorssaint", feature: .mouseScrollReverse)])
     }
 
+    @Test func altTabConflictsWhenRunning() {
+        let found = Conflicts.find(enabled: [.windowSwitcher], readBool: { _, _ in nil },
+                                   isRunning: { $0 == Conflicts.altTabBundleID })
+        #expect(found == [FeatureConflict(appName: "AltTab", feature: .windowSwitcher)])
+    }
+
     @Test func noConflictWhenOtherAppNotRunningOrFeatureOff() {
         let read: (String, String) -> Bool? = { _, _ in true }
         #expect(Conflicts.find(enabled: [.mouseScrollReverse], readBool: read, isRunning: { _ in false }).isEmpty)

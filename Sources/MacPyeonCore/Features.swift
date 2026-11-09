@@ -47,6 +47,9 @@ public enum FeatureID: String, CaseIterable, Sendable {
     case wonToBacktick
     case nfcFilenames
     case disableAutoCorrect
+    case clipboardNFC
+    case inputSourceIndicator
+    case perAppInputSource
 
     // 윈도우처럼
     case taskManager
@@ -57,6 +60,8 @@ public enum FeatureID: String, CaseIterable, Sendable {
     case finderNewTextFile
     case homeEndKeys
     case finderPasteImage
+    case windowSwitcher
+    case finderWindowsShortcuts
 
     // 마우스·스크롤
     case mouseScrollReverse
@@ -119,7 +124,7 @@ public struct FeatureInfo: Sendable, Identifiable {
 
     /// 키보드 단축키를 쓰는 기능은 손쉬운 사용 권한이 필요하다.
     public var needsAccessibility: Bool {
-        kind == .eventTap || id == .capsLockHangul || id == .clipboardHistory
+        kind == .eventTap || id == .capsLockHangul || id == .clipboardHistory || id == .perAppInputSource
     }
 }
 
@@ -156,6 +161,21 @@ public enum FeatureCatalog {
             title: "자동 수정·자동 대문자 끄기",
             detail: "맞춤법 자동 수정, 첫 글자 자동 대문자, 스페이스 두 번에 마침표, 둥근 따옴표 변환을 끕니다. 한글 입력할 때 단어가 멋대로 바뀌는 걸 막아요.",
             recommended: true, note: "이미 열려 있는 앱은 다시 열어야 적용됩니다."),
+        FeatureInfo(
+            id: .clipboardNFC, category: .korean, kind: .service,
+            title: "복사한 글자의 자소 분리 자동 합치기",
+            detail: "Finder에서 파일 이름을 복사해 웹이나 메신저에 붙이면 'ㅎㅏㄴㄱㅡㄹ'처럼 풀려 보이는 문제를 막습니다. 복사하는 순간 정상 한글로 바꿔 둬요.",
+            recommended: true, note: nil),
+        FeatureInfo(
+            id: .inputSourceIndicator, category: .korean, kind: .service,
+            title: "한/영 바꿀 때 커서 옆에 표시 (macOS 13)",
+            detail: "입력 언어가 바뀌면 글자 입력 위치(없으면 마우스) 옆에 '한' 또는 'A'를 잠깐 띄웁니다. 엉뚱한 언어로 치는 일을 줄여요.",
+            recommended: true, note: nil),
+        FeatureInfo(
+            id: .perAppInputSource, category: .korean, kind: .service,
+            title: "앱마다 입력 언어 기억",
+            detail: "앱을 바꾸면 그 앱에서 마지막으로 쓰던 언어로 자동 전환합니다. 예: 터미널·코드 편집기는 영어, 카카오톡·메모는 한글.",
+            recommended: false, note: nil),
 
         // MARK: 윈도우처럼
         FeatureInfo(
@@ -198,6 +218,16 @@ public enum FeatureCatalog {
             title: "복사한 이미지를 파일로 붙여넣기",
             detail: "스크린샷이나 웹 이미지를 복사한 뒤 Finder에서 ⌘V를 누르면 지금 폴더에 PNG 파일로 저장됩니다.",
             recommended: true, note: nil),
+        FeatureInfo(
+            id: .windowSwitcher, category: .windows, kind: .eventTap,
+            title: "창 단위 전환 (⌥Tab)",
+            detail: "⌥(Alt)를 누른 채 Tab을 누르면 지금 데스크탑의 창과 최소화한 창 목록이 뜨고, 손을 떼면 고른 창으로 갑니다. ⇧를 같이 누르면 거꾸로, Esc는 취소. 같은 앱의 창도 하나씩 고를 수 있어요. (Numbers·Pages·Keynote에서는 표 칸의 ⌥Tab을 그대로 둡니다)",
+            recommended: true, note: "화면 기록 권한을 허용하면 창 미리보기도 보여 줘요(선택)."),
+        FeatureInfo(
+            id: .finderWindowsShortcuts, category: .windows, kind: .eventTap,
+            title: "Finder 윈도우 단축키",
+            detail: "Finder에서 Ctrl+Shift+N 새 폴더, Ctrl+Shift+C 경로 복사, Ctrl+Shift+T 지금 폴더에서 터미널 열기. 오른쪽 클릭 > 빠른 동작(서비스)에도 '경로 복사'와 '터미널 열기'가 있어요.",
+            recommended: true, note: "터미널 열기는 처음 사용할 때 Finder 제어 허용 창이 뜹니다."),
 
         // MARK: 마우스·스크롤
         FeatureInfo(
@@ -332,10 +362,37 @@ public enum FeatureCatalog {
     public static func info(_ id: FeatureID) -> FeatureInfo { byID[id]! }
 
     public static func features(in category: FeatureCategory) -> [FeatureInfo] {
-        all.filter { $0.category == category }
+        all.filter { $0.category == category && !unavailableHere.contains($0.id) }
     }
 
-    public static var recommended: Set<FeatureID> { Set(all.filter(\.recommended).map(\.id)) }
+    public static var recommended: Set<FeatureID> {
+        Set(all.filter(\.recommended).map(\.id)).subtracting(unavailableHere)
+    }
+
+    /// 이 macOS에서는 필요 없거나 쓸 수 없는 기능.
+    public static func unavailable(onMacOS major: Int) -> Set<FeatureID> {
+        // macOS 14부터는 시스템이 글자 입력 위치에 입력 언어를 직접 보여 준다(겹쳐 보임).
+        major >= 14 ? [.inputSourceIndicator] : []
+    }
+
+    public static var unavailableHere: Set<FeatureID> {
+        unavailable(onMacOS: ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
+    }
+
+    /// 화면에 보여 줄 기능 수.
+    public static var availableCount: Int { all.count - unavailableHere.count }
+
+    /// 0.1.x 이후에 추가된 기능. 기존 사용자에게도 추천 기능이면 한 번 켜 준다.
+    public static let addedAfterFirstRelease: [FeatureID] = [
+        .clipboardNFC, .inputSourceIndicator, .perAppInputSource, .windowSwitcher, .finderWindowsShortcuts,
+    ]
+
+    /// 이번 실행에서 처음 보는 추천 기능(기존 사용자 대상). known이 nil이면 기록이 생기기 전 버전에서 올라온 것.
+    public static func newlyRecommended(known: Set<String>?) -> Set<FeatureID> {
+        let seen: Set<FeatureID> = known.map { Set($0.compactMap(FeatureID.init(rawValue:))) }
+            ?? Set(FeatureID.allCases).subtracting(addedAfterFirstRelease)
+        return recommended.subtracting(seen)
+    }
 }
 
 /// 한/영 전환에 쓸 단독 키.

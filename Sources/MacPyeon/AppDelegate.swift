@@ -291,6 +291,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         m.addItem(item("현재 Finder 폴더에 새 텍스트 문서", #selector(newTextFile)))
         m.addItem(item("한글 파일명 정리(자소 합치기)…", #selector(normalizeNames)))
         m.addItem(item("윈도우용으로 압축…", #selector(zipForWindows)))
+        m.addItem(item("윈도우 zip 한글 깨짐 없이 풀기…", #selector(unzipWindows)))
+        m.addItem(item("Finder 폴더에서 터미널 열기", #selector(terminalHere)))
         return m
     }
 
@@ -358,6 +360,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func openActivityMonitor() { KeyRouter.openActivityMonitor() }
     @objc private func openTaskManager() { TaskManagerWindow.show() }
     @objc private func normalizeNames() { FileActions.chooseAndNormalize() }
+    @objc private func unzipWindows() { FileActions.chooseAndUnzip() }
+    @objc private func terminalHere() { FileActions.openTerminalAtFinderLocation() }
     @objc private func zipForWindows() { FileActions.chooseAndZip(encoding: controller.store.zipEncoding) }
     @objc private func openSettingsAction() { openSettings() }
     @objc private func quit() { NSApp.terminate(nil) }

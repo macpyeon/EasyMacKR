@@ -11,7 +11,8 @@ public enum Conflicts {
         let appName: String
         let bundleID: String
         let domain: String
-        let key: String
+        /// nil이면 그 앱이 실행 중이기만 해도 충돌(설정과 무관하게 같은 단축키를 쓰는 앱).
+        let key: String?
         let feature: FeatureID
     }
 
@@ -32,7 +33,11 @@ public enum Conflicts {
             ("urlCleanerEnabled", .cleanURLs),
         ]
         return pairs.map { Rule(appName: v.0, bundleID: v.1, domain: v.2, key: $0.0, feature: $0.1) }
+            + [Rule(appName: "AltTab", bundleID: altTabBundleID, domain: altTabBundleID, key: nil, feature: .windowSwitcher)]
     }()
+
+    /// ⌥Tab을 기본 단축키로 쓰는 창 전환 앱.
+    public static let altTabBundleID = "com.lwouis.alt-tab-macos"
 
     /// - Parameters:
     ///   - readBool: (설정 도메인, 키) → 값. 없으면 nil.
@@ -42,7 +47,7 @@ public enum Conflicts {
                             isRunning: (String) -> Bool) -> [FeatureConflict] {
         var result: [FeatureConflict] = []
         for rule in rules where enabled.contains(rule.feature) && isRunning(rule.bundleID) {
-            guard readBool(rule.domain, rule.key) == true else { continue }
+            if let key = rule.key, readBool(rule.domain, key) != true { continue }
             let conflict = FeatureConflict(appName: rule.appName, feature: rule.feature)
             if !result.contains(conflict) { result.append(conflict) }
         }

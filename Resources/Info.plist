@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>ko</string>
+	<key>CFBundleDisplayName</key>
+	<string>맥편해</string>
 	<key>CFBundleExecutable</key>
 	<string>MacPyeon</string>
 	<key>CFBundleIconFile</key>
@@ -14,30 +16,30 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>MacPyeon</string>
-	<key>CFBundleDisplayName</key>
-	<string>맥편해</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.utilities</string>
-	<key>NSHumanReadableCopyright</key>
-	<string>맥편해</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Finder의 현재 폴더에 새 문서·이미지를 만들고, 휴지통 비우기와 다크 모드 전환을 위해 Finder와 System Events를 제어합니다.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>연결된 블루투스 키보드·마우스의 배터리 잔량을 보여 주는 데 씁니다.</string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>데스크탑에 생긴 한글 파일 이름이 윈도우에서 깨지지 않도록(자소 분리 방지) 이름을 정리합니다.</string>
-	<key>NSDownloadsFolderUsageDescription</key>
-	<string>다운로드한 한글 파일 이름이 윈도우에서 깨지지 않도록(자소 분리 방지) 이름을 정리합니다.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>선택한 파일의 한글 이름을 정리하거나 윈도우용으로 압축합니다.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>다운로드한 한글 파일 이름이 윈도우에서 깨지지 않도록(자소 분리 방지) 이름을 정리합니다.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>맥편해</string>
 	<key>NSServices</key>
 	<array>
 		<dict>
@@ -65,6 +67,57 @@
 			</dict>
 			<key>NSMessage</key>
 			<string>normalizeHangulNames</string>
+			<key>NSPortName</key>
+			<string>MacPyeon</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>맥편해: 한글 깨짐 없이 zip 풀기</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>unzipWindows</string>
+			<key>NSPortName</key>
+			<string>MacPyeon</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.zip-archive</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>맥편해: 경로 복사</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>copyPath</string>
+			<key>NSPortName</key>
+			<string>MacPyeon</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>맥편해: 여기서 터미널 열기</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>openTerminalHere</string>
 			<key>NSPortName</key>
 			<string>MacPyeon</string>
 			<key>NSRequiredContext</key>
